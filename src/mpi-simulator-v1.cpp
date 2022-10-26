@@ -6,13 +6,13 @@
 void simulateStep(const QuadTree &quadTree,
                   const std::vector<Particle> &particles,
                   std::vector<Particle> &newParticles, StepParameters params) {
-  for (int j = 0; j < particles.size(); j++) {
+  for (size_t j = 0; j < particles.size(); j++) {
       auto p = particles[j];
       Vec2 force = Vec2(0.0f, 0.0f);
       std::vector<Particle> neighbors;
-      accel->getParticles(neighbors, p.position, params.cullRadius);
+      quadTree.getParticles(neighbors, p.position, params.cullRadius);
       /* Iterate through nearby particles and accumulate new force */
-      for (int i = 0; i < neighbors.size(); i++) {
+      for (size_t i = 0; i < neighbors.size(); i++) {
         Particle p1 = neighbors[i];
         force += computeForce(p, p1, params.cullRadius);
       }
