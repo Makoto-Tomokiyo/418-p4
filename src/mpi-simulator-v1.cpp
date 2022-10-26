@@ -3,6 +3,8 @@
 #include "quad-tree.h"
 #include "timing.h"
 
+#define COORDINATOR 0
+
 void simulateStep(const QuadTree &quadTree,
                   const std::vector<Particle> &particles,
                   std::vector<Particle> &newParticles, StepParameters params) {
@@ -35,7 +37,7 @@ int main(int argc, char *argv[]) {
   StartupOptions options = parseOptions(argc, argv);
 
   std::vector<Particle> particles, newParticles;
-  if (pid == 0) {
+  if (pid == COORDINATOR) {
     loadFromFile(options.inputFile, particles);
   }
 
