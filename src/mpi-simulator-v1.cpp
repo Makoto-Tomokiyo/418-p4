@@ -26,6 +26,8 @@ void simulateStep(const QuadTree &quadTree,
 int main(int argc, char *argv[]) {
   int pid;
   int nproc;
+  int len;
+  char hostname[MPI_MAX_PROCESSOR_NAME];
 
   // Initialize MPI
   MPI_Init(&argc, &argv);
@@ -35,6 +37,11 @@ int main(int argc, char *argv[]) {
   MPI_Comm_size(MPI_COMM_WORLD, &nproc);
 
   StartupOptions options = parseOptions(argc, argv);
+
+  MPI_Get_processor_name(hostname, &len);
+  printf ("Hello from task %d on %s!\n", pid, hostname);
+  if (pid == COORDINATOR)
+    printf("MASTER: Number of MPI tasks is: %d\n",nproc);
 
   std::vector<Particle> particles, newParticles;
   if (pid == COORDINATOR) {

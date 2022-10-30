@@ -4,6 +4,8 @@
 #include "common.h"
 #include <memory>
 
+const int QuadTreeLeafSize = 8;
+
 // NOTE: Do not remove or edit funcations and variables in this class definition
 class QuadTreeNode {
 public:
@@ -67,9 +69,56 @@ private:
   static std::unique_ptr<QuadTreeNode>
   buildQuadTreeImpl(const std::vector<Particle> &particles, Vec2 bmin,
                     Vec2 bmax) {
-    // TODO: paste your sequential implementation in Assignment 3 here.
-    // (or you may also rewrite a new version)
-    return nullptr;
+    std::unique_ptr<QuadTreeNode> quad_node = std::make_unique<QuadTreeNode>();
+    
+    std::vector<Particle> top_left;
+    std::vector<Particle> top_right;
+    std::vector<Particle> bottom_left;
+    std::vector<Particle> bottom_right;
+
+    int count = 0;
+    const float x_split = (bmin.x + bmax.x) / 2;
+    const float y_split = (bmin.y + bmax.y) / 2;
+
+    for (auto &p : particles) {
+      count ++;
+      if (p.position.x <= x_split && p.position.y <= y_split)
+        top_left.push_back(p);
+      else if (p.position.x > x_split && p.position.y <= y_split)
+        top_right.push_back(p);
+      else if (p.position.x <= x_split && p.position.y > y_split)
+        bottom_left.push_back(p);
+      else if (p.position.x > x_split && p.position.y > y_split)
+        bottom_right.push_back(p);
+    }
+    // printf("count %d, current boundary: %f, %f, %f, %f\n", count, bmin.x, bmin.y, bmax.x, bmax.y);
+    if (count <= QuadTreeLeafSize) {
+      quad_node->isLeaf = true;
+      for (auto &p : particles) {
+        quad_node->particles.push_back(p);
+      }
+    } else {
+      quad_node -> isLeaf = false;
+      Vec2 bmin_new(bmin.x, bmin.y);
+      Vec2 bmax_new(x_split, y_split);
+      quad_node->children[0] = buildQuadTreeImpl(top_left, bmin_new, bmax_new);
+
+      bmin_new.x = x_split;
+      bmax_new.x = bmax.x;
+      quad_node->children[1] = buildQuadTreeImpl(top_right, bmin_new, bmax_new);
+
+      bmin_new.x = bmin.x;
+      bmin_new.y = y_split;
+      bmax_new.x = x_split;
+      bmax_new.y = bmax.y;
+      quad_node->children[2] = buildQuadTreeImpl(bottom_left, bmin_new, bmax_new);
+
+      bmin_new.x = x_split;
+      bmax_new.x = bmax.x;
+      quad_node->children[3] = buildQuadTreeImpl(bottom_right, bmin_new, bmax_new);
+    }
+
+    return quad_node;
   }
 
   static void getParticlesImpl(std::vector<Particle> &particles,
