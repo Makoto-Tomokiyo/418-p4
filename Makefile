@@ -3,13 +3,13 @@ OUTPUTDIR := bin/
 CFLAGS := -std=c++14 -fvisibility=hidden -lpthread -Wall -Wextra
 
 ifeq (,$(CONFIGURATION))
-	CONFIGURATION := release
+	CONFIGURATION := debug
 endif
 
 ifeq (debug,$(CONFIGURATION))
 CFLAGS += -g
 else
-CFLAGS += -O2
+CFLAGS += -Og -g # TODO: change back to -O2 for performance
 endif
 
 HEADERS := src/*.h
