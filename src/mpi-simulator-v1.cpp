@@ -15,19 +15,6 @@ static int nproc;
 static bool waiting;
 static MPI_Status status;
 
-// assign a subrange of particles to each node.
-void get_work_params(int id, int n, int nprocs, size_t &start, size_t &end) {
-  int bsize = n / nprocs;
-  int r = n % bsize;
-  if (id < r) {
-    start = id * (bsize + 1);
-    end = start + bsize + 1;
-  } else {
-    start = r * (bsize + 1) + (id - r) * bsize;
-    end = start + bsize;
-  }
-}
-
 /**
  * Simulates one iteration for a subrange of particles, 
  * putting the result in newParticles. 
@@ -57,49 +44,6 @@ void simulateStep(const QuadTree &quadTree,
       Particle newp = updateParticle(p, force, params.deltaTime);
       newParticles.push_back(newp);
     }
-}
-
-/**
- * @brief Unmarshal the data from src into a particle vector.
- *        Appends unmarshaled data to the end of the vector.
- * @param[in] src the source raw data
- * @param[out] particles the vector to place the particles into
- * @param[in] num_particles the number of particles to unmarshal fom src
-*/
-void unmarshal_particles(uint32_t *src, std::vector<Particle> &particles, 
-                        int num_particles) {
-  for (int i = 0; i < num_particles; i += INT_TYPES_PER_PARTICLE) {
-      Particle p;
-      float *float_fields = (float *)&src[i + 1];
-      p.id = src[i];
-      p.mass = float_fields[0];
-      p.position = Vec2(float_fields[1], float_fields[2]);
-      p.velocity = Vec2(float_fields[3], float_fields[4]);
-      particles.push_back(p);
-    }
-}
-
-/**
- * @brief Broadcast an entire particle list from coordinator to satellites.
- *        For sending subranges from satellite to coordinator, 
- *        use sat_send_particles instead.
- * 
- * @param[out] particles The particle list used by satellites to copy data into.
- * @param[in] raw_data The raw particle data sent by the coordinator.
- * @param[in] num_particles The number of particles to broadcast.
-*/
-void broadcast_particle_list(std::vector<Particle> &particles, 
-                             void *raw_data, int num_particles) {
-  /* broadcast raw particle data */
-  std::cerr<<"second bcast"<<std::endl;
-  // MPI_Type particle = MPI_Type_create_struct();
-  
-
-  std::cerr<<"2nd broadcast worked"<<std::endl;
-  /* nodes unmarshal particle list */
-  // unmarshal_particles((uint32_t *)raw_data, particles, num_particles);
-  if (pid != COORDINATOR)
-    waiting = false;
 }
 
 /**
@@ -158,40 +102,64 @@ int main(int argc, char *argv[]) {
   std::cerr<<"first broadcast worked"<<std::endl;
 
   /* all nodes create particle array for broadcast */
-  // get_work_params(pid, num_particles, nproc, start, end);
+  get_work_params(pid, num_particles, nproc, start, end);
   // uint32_t raw_particle_list[num_particles * INT_TYPES_PER_PARTICLE]; // global particle data
   // uint32_t local_list[(end - start) * INT_TYPES_PER_PARTICLE]; // data for particles that node simulates
-
-  // if (pid == COORDINATOR)
-  //   serialize_particle_list(particles, &raw_particle_list[0], num_particles);
 
   // Don't change the timeing for totalSimulationTime.
   MPI_Barrier(MPI_COMM_WORLD);
   Timer totalSimulationTimer;
 
-  // broadcast_particle_list(particles, (void *)particles.data(), num_particles);
-  // for (int i = 0; i < options.numIterations; i++) {
-  //   /* coordinator sends particle data to all nodes */
-  //   assert(!waiting); // nodes should not be waiting for response
-  //   // The following code is just a demonstration.
-  //   QuadTree tree;
-  //   QuadTree::buildQuadTree(particles, tree);
-  //   simulateStep(tree, particles, newParticles, stepParams, start, end);
-  //   /* send newParticles to master */
-  //   // serialize_particle_list(newParticles, &local_list[0], end - start);
-  //   if (pid != COORDINATOR) { /* start waiting for response from coordinator */
-  //     MPI_Send((void *), end - start, MPI_INT, COORDINATOR, DEF_TAG, MPI_COMM_WORLD);
-  //     waiting = true;
-  //   } else { /* coordinator receives responses from nodes */
-  //     memcpy(raw_particle_list, local_list, sizeof(local_list));
-  //     for (int i = 1; i < nproc; i++) {
-  //       size_t node_s, node_e;
-  //       get_work_params(i, num_particles, nproc, node_s, node_e);
-  //       MPI_Recv(local_list, end - start + 1, MPI_INT, i, DEF_TAG, MPI_COMM_WORLD, &status);
-  //       memcpy(raw_particle_list + node_s, local_list, node_e - node_s);
-  //     }
-  //   }
-  // }
+
+  
+  int displ[nprocs];
+  int recv_count[nprocs];
+  int bsize = n / nprocs;
+  int r = n % bsize;
+  for (int id = 0; id < nprocs; id++) { 
+    int s;
+    int e;
+    if (id < r) {
+      s = id * (bsize + 1);
+      e = s + bsize + 1;
+    } else {
+      s = r * (bsize + 1) + (id - r) * bsize;
+      e = s + bsize;
+    }
+    displ[id] = s;
+    recv_count[id] = (e-s) * sizeof(Particle);
+    if (id == pid) {
+      start = s;
+      end = e;
+    }
+  }
+
+
+  for (int i = 0; i < options.numIterations; i++) {
+    /* coordinator sends particle data to all nodes */
+    // The following code is just a demonstration.
+    // printf("iteration %d\n", i);
+    std::cerr<<i<<std::endl;
+    QuadTree tree;
+    QuadTree::buildQuadTree(particles, tree);
+    simulateStep(tree, particles, newParticles, stepParams, start, end);
+    /* send newParticles to master */
+    MPI_Allgatherv(newParticles.data(), newParticles.size() * sizeof(Particle), MPI_BYTE, particles.data(), sizeof(Particle) * particles.size(), MPI_BYTE);
+    // if (pid != COORDINATOR) { /* start waiting for response from coordinator */
+    //   MPI_Send((void *), end - start, MPI_INT, COORDINATOR, DEF_TAG, MPI_COMM_WORLD);
+    //   waiting = true;
+    // } else { /* coordinator receives responses from nodes */
+    //   memcpy(raw_particle_list, local_list, sizeof(local_list));
+    //   for (int i = 1; i < nproc; i++) {
+    //     size_t node_s, node_e;
+    //     get_work_params(i, num_particles, nproc, node_s, node_e);
+    //     MPI_Recv(local_list, end - start + 1, MPI_INT, i, DEF_TAG, MPI_COMM_WORLD, &status);
+    //     memcpy(raw_particle_list + node_s, local_list, node_e - node_s);
+    //   }
+    // }
+    newParticles.clear();
+  }
+
   MPI_Barrier(MPI_COMM_WORLD);
   double totalSimulationTime = totalSimulationTimer.elapsed();
 
