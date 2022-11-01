@@ -147,8 +147,8 @@ int main(int argc, char *argv[]) {
 
   /* all nodes create particle array for broadcast */
   get_work_params(pid, num_particles, nproc, start, end);
-  uint32_t raw_particle_list[num_particles]; // global particle data
-  uint32_t local_list[end - start]; // data for particles that node simulates
+  uint32_t raw_particle_list[num_particles * INT_TYPES_PER_PARTICLE]; // global particle data
+  uint32_t local_list[(end - start) * INT_TYPES_PER_PARTICLE]; // data for particles that node simulates
 
   if (pid == COORDINATOR)
     serialize_particle_list(particles, &raw_particle_list[0], num_particles);
