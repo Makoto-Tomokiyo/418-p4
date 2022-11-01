@@ -91,19 +91,13 @@ void unmarshal_particles(uint32_t *src, std::vector<Particle> &particles,
 void broadcast_particle_list(std::vector<Particle> &particles, 
                              void *raw_data, int num_particles) {
   /* broadcast raw particle data */
-  printf("broadcast reached.\n");
-  fflush(stdout);
-  MPI_Bcast(
-    raw_data, 
-    INT_TYPES_PER_PARTICLE * num_particles,
-    MPI_INT,
-    COORDINATOR,
-    MPI_COMM_WORLD);
+  std::cerr<<"second bcast"<<std::endl;
+  // MPI_Type particle = MPI_Type_create_struct();
+  
 
-  printf("broadcast works.\n");
-  fflush(stdout);
+  std::cerr<<"2nd broadcast worked"<<std::endl;
   /* nodes unmarshal particle list */
-  unmarshal_particles((uint32_t *)raw_data, particles, num_particles);
+  // unmarshal_particles((uint32_t *)raw_data, particles, num_particles);
   if (pid != COORDINATOR)
     waiting = false;
 }
@@ -142,12 +136,7 @@ int main(int argc, char *argv[]) {
   StepParameters stepParams = getBenchmarkStepParams(options.spaceSize);
 
   MPI_Get_processor_name(hostname, &len);
-  // int i = 0;
-  // printf("PID %d on %s ready for attach\n", getpid(), hostname);
-  // fflush(stdout);
-  // while (0 == i)
-  //     sleep(5);
-
+  std::cerr<<"hihii"<<std::endl;
   if (pid == COORDINATOR) {
     loadFromFile(options.inputFile, particles);
     num_particles = particles.size();
@@ -157,8 +146,19 @@ int main(int argc, char *argv[]) {
   /* broadcast size of particle list */
   MPI_Bcast(&num_particles, 1, MPI_INT, COORDINATOR, MPI_COMM_WORLD);
 
+  particles.resize(num_particles);
+
+  MPI_Bcast(
+    particles.data(), 
+    sizeof(Particle) * num_particles,
+    MPI_BYTE,
+    COORDINATOR,
+    MPI_COMM_WORLD);
+
+  std::cerr<<"first broadcast worked"<<std::endl;
+
   /* all nodes create particle array for broadcast */
-  get_work_params(pid, num_particles, nproc, start, end);
+  // get_work_params(pid, num_particles, nproc, start, end);
   // uint32_t raw_particle_list[num_particles * INT_TYPES_PER_PARTICLE]; // global particle data
   // uint32_t local_list[(end - start) * INT_TYPES_PER_PARTICLE]; // data for particles that node simulates
 
@@ -169,7 +169,7 @@ int main(int argc, char *argv[]) {
   MPI_Barrier(MPI_COMM_WORLD);
   Timer totalSimulationTimer;
 
-  broadcast_particle_list(particles, (void *)particles.data(), num_particles);
+  // broadcast_particle_list(particles, (void *)particles.data(), num_particles);
   // for (int i = 0; i < options.numIterations; i++) {
   //   /* coordinator sends particle data to all nodes */
   //   assert(!waiting); // nodes should not be waiting for response
@@ -195,10 +195,10 @@ int main(int argc, char *argv[]) {
   MPI_Barrier(MPI_COMM_WORLD);
   double totalSimulationTime = totalSimulationTimer.elapsed();
 
-  if (pid == COORDINATOR) {
-    printf("total simulation time: %.6fs\n", totalSimulationTime);
-    saveToFile(options.outputFile, particles);
-  }
+  // if (pid == COORDINATOR) {
+  //   printf("total simulation time: %.6fs\n", totalSimulationTime);
+  //   saveToFile(options.outputFile, particles);
+  // }
 
   MPI_Finalize();
 }
