@@ -4,6 +4,7 @@
 #include "timing.h"
 
 #define COORDINATOR 0
+#define INT_TYPES_PER_PARTICLE 6 // 1 int, 1 float, 2x vec2 (2 floats)
 
 void simulateStep(const QuadTree &quadTree,
                   const std::vector<Particle> &particles,
@@ -23,12 +24,19 @@ void simulateStep(const QuadTree &quadTree,
     }
 }
 
+void init_particle_list(const std::vector<Particle> &particles, int &particles) {
+
+}
+
 int main(int argc, char *argv[]) {
   int pid;
   int nproc;
   int len;
+  int num_particles;
   char hostname[MPI_MAX_PROCESSOR_NAME];
 
+  assert(sizeof(int) == 4);
+  assert(sizeof(float) == 4); // used for send and recv
   // Initialize MPI
   MPI_Init(&argc, &argv);
   // Get process rank
@@ -46,7 +54,10 @@ int main(int argc, char *argv[]) {
   std::vector<Particle> particles, newParticles;
   if (pid == COORDINATOR) {
     loadFromFile(options.inputFile, particles);
+    num_particles = particles.size();
   }
+
+  init_particle_list(particles, num_particles);
 
   StepParameters stepParams = getBenchmarkStepParams(options.spaceSize);
 
