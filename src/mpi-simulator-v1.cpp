@@ -3,15 +3,43 @@
 #include "quad-tree.h"
 #include "timing.h"
 
+#define DEF_TAG 0
 #define COORDINATOR 0
 #define INT_TYPES_PER_PARTICLE 6 // 1 int, 1 float, 2x vec2 (2 floats)
 
 static int pid;
+static int nproc;
+static bool waiting;
+static MPI_Status status;
 
+// assign a subrange of particles to each node.
+void get_work_params(int id, int n, int nprocs, size_t &start, size_t &end) {
+  int bsize = n / nprocs;
+  int r = n % bsize;
+  if (id < r) {
+    start = id * (bsize + 1);
+    end = start + bsize + 1;
+  } else {
+    start = r * (bsize + 1) + (id - r) * bsize;
+    end = start + bsize;
+  }
+}
+
+/**
+ * Simulates one iteration for a subrange of particles, 
+ * putting the result in newParticles. 
+ * @param[in] quadTree The quad tree holding all data structures.
+ * @param[in] particles The complete list of particles.
+ * @param[out] newParticles The empty particle list to be filled in.
+ * @param[in] params idk
+ */
 void simulateStep(const QuadTree &quadTree,
                   const std::vector<Particle> &particles,
-                  std::vector<Particle> &newParticles, StepParameters params) {
-  for (size_t j = 0; j < particles.size(); j++) {
+                  std::vector<Particle> &newParticles, StepParameters params,
+                  size_t start, size_t end) {
+  /* newParticles should be empty */
+  assert(newParticles.size() == 0);
+  for (size_t j = start; j < end; j++) {
       auto p = particles[j];
       Vec2 force = Vec2(0.0f, 0.0f);
       std::vector<Particle> neighbors;
@@ -22,12 +50,15 @@ void simulateStep(const QuadTree &quadTree,
         force += computeForce(p, p1, params.cullRadius);
       }
       /* Update force */
-      newParticles[j] = updateParticle(p, force, params.deltaTime);
+      // newParticles[j] = updateParticle(p, force, params.deltaTime);
+      Particle newp = updateParticle(p, force, params.deltaTime);
+      newParticles.push_back(newp);
     }
 }
 
 /**
- * @brief Unmarshal the data from src into a particle vector
+ * @brief Unmarshal the data from src into a particle vector.
+ *        Appends unmarshaled data to the end of the vector.
  * @param[in] src the source raw data
  * @param[out] particles the vector to place the particles into
  * @param[in] num_particles the number of particles to unmarshal fom src
@@ -64,9 +95,10 @@ void broadcast_particle_list(std::vector<Particle> &particles,
     COORDINATOR,
     MPI_COMM_WORLD);
 
-  /* satellite nodes unmarshal particle list */
+  /* nodes unmarshal particle list */
+  unmarshal_particles(raw_data, particles, num_particles);
   if (pid != COORDINATOR)
-    unmarshal_particles(raw_data, particles, num_particles);
+    waiting = false;
 }
 
 /**
@@ -83,24 +115,10 @@ void serialize_particle_list(std::vector<Particle> &particles, uint32_t *raw_dat
     INT_TYPES_PER_PARTICLE * sizeof(int) * num_particles);
 }
 
-// assign a subrange of particles to each node.
-void get_work_params(int n, int nprocs, int &start, int &end) {
-  int bsize = n / nprocs;
-  int r = n % bsize;
-  if (pid < r) {
-    start = pid * (bsize + 1);
-    end = start + bsize + 1;
-  } else {
-    start = r * (bsize + 1) + (pid - r) * bsize;
-    end = start + bsize;
-  }
-}
-
 int main(int argc, char *argv[]) {
-  int nproc;
   int len;
   int num_particles;
-  int start, end;
+  size_t start, end;
   char hostname[MPI_MAX_PROCESSOR_NAME];
   std::vector<Particle> particles, newParticles;
 
@@ -121,14 +139,16 @@ int main(int argc, char *argv[]) {
   if (pid == COORDINATOR) {
     loadFromFile(options.inputFile, particles);
     num_particles = particles.size();
+    waiting = false;
   }
 
   /* broadcast size of particle list */
   MPI_Bcast(&num_particles, 1, MPI_INT, COORDINATOR, MPI_COMM_WORLD);
 
   /* all nodes create particle array for broadcast */
-  uint32_t raw_particle_list[num_particles];
-  get_work_params(num_particles, nproc, start, end);
+  get_work_params(pid, num_particles, nproc, start, end);
+  uint32_t raw_particle_list[num_particles]; // global particle data
+  uint32_t local_list[end - start]; // data for particles that node simulates
 
   if (pid == COORDINATOR)
     serialize_particle_list(particles, &raw_particle_list[0], num_particles);
@@ -140,14 +160,25 @@ int main(int argc, char *argv[]) {
   for (int i = 0; i < options.numIterations; i++) {
     /* coordinator sends particle data to all nodes */
     broadcast_particle_list(particles, &raw_particle_list[0], num_particles);
+    assert(!waiting); // nodes should not be waiting for response
     // The following code is just a demonstration.
     QuadTree tree;
     QuadTree::buildQuadTree(particles, tree);
-    std::vector<Particle> subrange = std::vector<Particle>(
-                                                particles.begin() + start,
-                                                particles.begin() + end);
-    simulateStep(tree, subrange, newParticles, stepParams);
-    // send particles to master
+    simulateStep(tree, particles, newParticles, stepParams, start, end);
+    /* send newParticles to master */
+    serialize_particle_list(newParticles, &local_list[0], end - start);
+    if (pid != COORDINATOR) { /* start waiting for response from coordinator */
+      MPI_Send(local_list, end - start, MPI_INT, COORDINATOR, DEF_TAG, MPI_COMM_WORLD);
+      waiting = true;
+    } else { /* coordinator receives responses from nodes */
+      memcpy(raw_particle_list, local_list, sizeof(local_list));
+      for (int i = 1; i < nproc; i++) {
+        size_t node_s, node_e;
+        get_work_params(i, num_particles, nproc, node_s, node_e);
+        MPI_Recv(local_list, end - start + 1, MPI_INT, COORDINATOR, DEF_TAG, MPI_COMM_WORLD, &status);
+        memcpy(raw_particle_list + node_s, local_list, node_e - node_s);
+      }
+    }
   }
   MPI_Barrier(MPI_COMM_WORLD);
   double totalSimulationTime = totalSimulationTimer.elapsed();
