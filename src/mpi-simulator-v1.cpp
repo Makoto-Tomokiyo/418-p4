@@ -11,7 +11,16 @@ static int pid;
 void simulateStep(const QuadTree &quadTree,
                   const std::vector<Particle> &particles,
                   std::vector<Particle> &newParticles, StepParameters params) {
-  for (size_t j = 0; j < particles.size(); j++) {
+  int split_size = floor(particles.size() / nproc);
+  int start = split_size * pid;
+  int end = start + split_size;
+
+  // account for bad division
+  if (pid == nproc) {
+    end = particles.size();
+  }
+
+  for (size_t j = start; j < end); j++) {
       auto p = particles[j];
       Vec2 force = Vec2(0.0f, 0.0f);
       std::vector<Particle> neighbors;
