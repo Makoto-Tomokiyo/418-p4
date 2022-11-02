@@ -102,7 +102,6 @@ int main(int argc, char *argv[]) {
   std::cerr<<"first broadcast worked"<<std::endl;
 
   /* all nodes create particle array for broadcast */
-  get_work_params(pid, num_particles, nproc, start, end);
   // uint32_t raw_particle_list[num_particles * INT_TYPES_PER_PARTICLE]; // global particle data
   // uint32_t local_list[(end - start) * INT_TYPES_PER_PARTICLE]; // data for particles that node simulates
 
@@ -112,11 +111,11 @@ int main(int argc, char *argv[]) {
 
 
   
-  int displ[nprocs];
-  int recv_count[nprocs];
-  int bsize = n / nprocs;
-  int r = n % bsize;
-  for (int id = 0; id < nprocs; id++) { 
+  int displ[nproc];
+  int recv_count[nproc];
+  int bsize = num_particles / nproc;
+  int r = num_particles % bsize;
+  for (int id = 0; id < nproc; id++) { 
     int s;
     int e;
     if (id < r) {
@@ -144,7 +143,16 @@ int main(int argc, char *argv[]) {
     QuadTree::buildQuadTree(particles, tree);
     simulateStep(tree, particles, newParticles, stepParams, start, end);
     /* send newParticles to master */
-    MPI_Allgatherv(newParticles.data(), newParticles.size() * sizeof(Particle), MPI_BYTE, particles.data(), sizeof(Particle) * particles.size(), MPI_BYTE);
+    MPI_Allgatherv(
+      newParticles.data(), 
+      newParticles.size() * sizeof(Particle), 
+      MPI_BYTE, 
+      particles.data(), 
+      displ, 
+      recv_count,
+      MPI_BYTE,
+      MPI_COMM_WORLD
+    );
     // if (pid != COORDINATOR) { /* start waiting for response from coordinator */
     //   MPI_Send((void *), end - start, MPI_INT, COORDINATOR, DEF_TAG, MPI_COMM_WORLD);
     //   waiting = true;
@@ -152,7 +160,6 @@ int main(int argc, char *argv[]) {
     //   memcpy(raw_particle_list, local_list, sizeof(local_list));
     //   for (int i = 1; i < nproc; i++) {
     //     size_t node_s, node_e;
-    //     get_work_params(i, num_particles, nproc, node_s, node_e);
     //     MPI_Recv(local_list, end - start + 1, MPI_INT, i, DEF_TAG, MPI_COMM_WORLD, &status);
     //     memcpy(raw_particle_list + node_s, local_list, node_e - node_s);
     //   }
