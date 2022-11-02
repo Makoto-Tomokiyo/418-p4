@@ -28,7 +28,7 @@ void simulateStep(const QuadTree &quadTree,
                   std::vector<Particle> &newParticles, StepParameters params,
                   size_t start, size_t end) {
   /* newParticles should be empty */
-  assert(newParticles.size() == 0);
+  // assert(newParticles.size() == 0);
   for (size_t j = start; j < end; j++) {
       auto p = particles[j];
       Vec2 force = Vec2(0.0f, 0.0f);
@@ -40,8 +40,7 @@ void simulateStep(const QuadTree &quadTree,
         force += computeForce(p, p1, params.cullRadius);
       }
       /* Update force */
-      Particle newp = updateParticle(p, force, params.deltaTime);
-      newParticles.push_back(newp);
+      newParticles[j-start] = updateParticle(p, force, params.deltaTime);
     }
 }
 
@@ -111,7 +110,9 @@ int main(int argc, char *argv[]) {
       end = e;
     }
   }
+  newParticles.resize(recv_count[pid]/ sizeof(Particle));
   Timer totalSimulationTimer;
+
 
   for (int i = 0; i < options.numIterations; i++) {
     /* coordinator sends particle data to all nodes */
@@ -131,7 +132,6 @@ int main(int argc, char *argv[]) {
       MPI_BYTE,
       MPI_COMM_WORLD
     );
-    newParticles.clear();
   }
 
   MPI_Barrier(MPI_COMM_WORLD);
