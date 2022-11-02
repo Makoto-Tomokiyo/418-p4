@@ -5,6 +5,7 @@
 
 
 int radius;
+int dim;
 
 void simulateStep(const std::vector<Particle> &grid_particles,
                   std::vector<Particle> &newParticles, std::vector<Particle> &neighbors, StepParameters params) {
@@ -55,7 +56,7 @@ int main(int argc, char *argv[]) {
 
   StartupOptions options = parseOptions(argc, argv);
 
-  std::vector<Particle> particles, newParticles;
+  std::vector<Particle> particles, newParticles, grid_particles, neighbors;
   loadFromFile(options.inputFile, particles);
   Vec2 bmin(1e30f, 1e30f);
   Vec2 bmax(-1e30f, -1e30f);
@@ -67,17 +68,13 @@ int main(int argc, char *argv[]) {
     bmax.y = fmaxf(bmax.y, p.position.y);
   }
 
-  int dim = sqrt(nproc);
+  dim = sqrt(nproc);
   int x_size = 500;
   // int y_size = floor((bmax.y - bmin.y) / dim);
   int min_x = x_size * floor(pid / dim) - 500; 
   int min_y = x_size * (pid % dim) - 500;
   int max_x = min_x + x_size;
   int max_y = min_y + x_size;
-
-
-  std::vector<Particle> grid_particles;
-  std::vector<Particle> neighbors;
 
   int displ[nproc];
   int recv_count[nproc];
