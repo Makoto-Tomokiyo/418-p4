@@ -40,25 +40,10 @@ void simulateStep(const QuadTree &quadTree,
         force += computeForce(p, p1, params.cullRadius);
       }
       /* Update force */
-      // newParticles[j] = updateParticle(p, force, params.deltaTime);
       Particle newp = updateParticle(p, force, params.deltaTime);
       newParticles.push_back(newp);
     }
 }
-
-/**
- * particle list is
- * | int (4) | float (4) | vec2: 2 floats (8) | vec2 (8) |
-*/
-// void serialize_particle_list(std::vector<Particle> &particles, uint32_t *raw_data, 
-//                         int num_particles) {
-
-//   /* serialize loaded particle data into raw data buffer */
-//   memcpy(
-//     (void *)raw_data, 
-//     (void *)particles.data(), 
-//     INT_TYPES_PER_PARTICLE * sizeof(int) * num_particles);
-// }
 
 int main(int argc, char *argv[]) {
   int len;
@@ -80,7 +65,6 @@ int main(int argc, char *argv[]) {
   StepParameters stepParams = getBenchmarkStepParams(options.spaceSize);
 
   MPI_Get_processor_name(hostname, &len);
-  std::cerr<<"hihii"<<std::endl;
   if (pid == COORDINATOR) {
     loadFromFile(options.inputFile, particles);
     num_particles = particles.size();
@@ -98,8 +82,6 @@ int main(int argc, char *argv[]) {
     MPI_BYTE,
     COORDINATOR,
     MPI_COMM_WORLD);
-
-  std::cerr<<"first broadcast worked"<<std::endl;
 
   /* all nodes create particle array for broadcast */
   // uint32_t raw_particle_list[num_particles * INT_TYPES_PER_PARTICLE]; // global particle data
@@ -125,8 +107,9 @@ int main(int argc, char *argv[]) {
       s = r * (bsize + 1) + (id - r) * bsize;
       e = s + bsize;
     }
-    displ[id] = s;
+    displ[id] = s * sizeof(Particle);
     recv_count[id] = (e-s) * sizeof(Particle);
+    printf("id %d, displ %d, recv %d\n", id, displ[id], recv_count[id]);
     if (id == pid) {
       start = s;
       end = e;
@@ -138,18 +121,25 @@ int main(int argc, char *argv[]) {
     /* coordinator sends particle data to all nodes */
     // The following code is just a demonstration.
     // printf("iteration %d\n", i);
-    std::cerr<<i<<std::endl;
+    if (pid == 0) {
+      std::cerr<<i<<std::endl;
+      // std::cerr<<&displ<<std::endl;
+      // std::cerr<<&recv_count<<std::endl;
+    }
+    // std::cerr<<i<<std::endl;
     QuadTree tree;
     QuadTree::buildQuadTree(particles, tree);
     simulateStep(tree, particles, newParticles, stepParams, start, end);
     /* send newParticles to master */
+
+    
     MPI_Allgatherv(
       newParticles.data(), 
       newParticles.size() * sizeof(Particle), 
       MPI_BYTE, 
       particles.data(), 
-      displ, 
       recv_count,
+      displ, 
       MPI_BYTE,
       MPI_COMM_WORLD
     );
@@ -170,10 +160,10 @@ int main(int argc, char *argv[]) {
   MPI_Barrier(MPI_COMM_WORLD);
   double totalSimulationTime = totalSimulationTimer.elapsed();
 
-  // if (pid == COORDINATOR) {
-  //   printf("total simulation time: %.6fs\n", totalSimulationTime);
-  //   saveToFile(options.outputFile, particles);
-  // }
+  if (pid == COORDINATOR) {
+    printf("total simulation time: %.6fs\n", totalSimulationTime);
+    saveToFile(options.outputFile, particles);
+  }
 
   MPI_Finalize();
 }
