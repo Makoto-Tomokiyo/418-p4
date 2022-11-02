@@ -7,9 +7,8 @@ ifeq (,$(CONFIGURATION))
 endif
 
 ifeq (debug,$(CONFIGURATION))
-CFLAGS += -g
 else
-CFLAGS += -Og -g # TODO: change back to -O2 for performance
+CFLAGS += -O2 # TODO: change back to -O2 for performance
 endif
 
 HEADERS := src/*.h
