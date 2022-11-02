@@ -56,9 +56,7 @@ int main(int argc, char *argv[]) {
   assert(sizeof(int) == 4 && sizeof(float) == 4);
   // Initialize MPI
   MPI_Init(&argc, &argv);
-  // Get process rank
   MPI_Comm_rank(MPI_COMM_WORLD, &pid);
-  // Get total number of processes specificed at start of run
   MPI_Comm_size(MPI_COMM_WORLD, &nproc);
 
   StartupOptions options = parseOptions(argc, argv);
@@ -76,84 +74,67 @@ int main(int argc, char *argv[]) {
 
   particles.resize(num_particles);
 
-  MPI_Bcast(
+  // MPI_Bcast(
+  //   particles.data(), 
+  //   sizeof(Particle) * num_particles,
+  //   MPI_BYTE,
+  //   COORDINATOR,
+  //   MPI_COMM_WORLD);
+
+  // MPI_Barrier(MPI_COMM_WORLD);
+  Timer totalSimulationTimer;
+
+
+  
+  // int displ[nproc];
+  // int recv_count[nproc];
+  // int bsize = num_particles / nproc;
+  // int r = num_particles % bsize;
+  // for (int id = 0; id < nproc; id++) { 
+  //   int s;
+  //   int e;
+  //   if (id < r) {
+  //     s = id * (bsize + 1);
+  //     e = s + bsize + 1;
+  //   } else {
+  //     s = r * (bsize + 1) + (id - r) * bsize;
+  //     e = s + bsize;
+  //   }
+  //   displ[id] = s * sizeof(Particle);
+  //   recv_count[id] = (e-s) * sizeof(Particle);
+  //   if (id == pid) {
+  //     start = s;
+  //     end = e;
+  //   }
+  // }
+
+
+  for (int i = 0; i < options.numIterations; i++) {
+    /* coordinator sends particle data to all nodes */
+    MPI_Bcast(
     particles.data(), 
     sizeof(Particle) * num_particles,
     MPI_BYTE,
     COORDINATOR,
     MPI_COMM_WORLD);
 
-  /* all nodes create particle array for broadcast */
-  // uint32_t raw_particle_list[num_particles * INT_TYPES_PER_PARTICLE]; // global particle data
-  // uint32_t local_list[(end - start) * INT_TYPES_PER_PARTICLE]; // data for particles that node simulates
-
-  // Don't change the timeing for totalSimulationTime.
   MPI_Barrier(MPI_COMM_WORLD);
-  Timer totalSimulationTimer;
-
-
-  
-  int displ[nproc];
-  int recv_count[nproc];
-  int bsize = num_particles / nproc;
-  int r = num_particles % bsize;
-  for (int id = 0; id < nproc; id++) { 
-    int s;
-    int e;
-    if (id < r) {
-      s = id * (bsize + 1);
-      e = s + bsize + 1;
-    } else {
-      s = r * (bsize + 1) + (id - r) * bsize;
-      e = s + bsize;
-    }
-    displ[id] = s * sizeof(Particle);
-    recv_count[id] = (e-s) * sizeof(Particle);
-    printf("id %d, displ %d, recv %d\n", id, displ[id], recv_count[id]);
-    if (id == pid) {
-      start = s;
-      end = e;
-    }
-  }
-
-
-  for (int i = 0; i < options.numIterations; i++) {
-    /* coordinator sends particle data to all nodes */
-    // The following code is just a demonstration.
-    // printf("iteration %d\n", i);
-    if (pid == 0) {
-      std::cerr<<i<<std::endl;
-      // std::cerr<<&displ<<std::endl;
-      // std::cerr<<&recv_count<<std::endl;
-    }
-    // std::cerr<<i<<std::endl;
     QuadTree tree;
     QuadTree::buildQuadTree(particles, tree);
     simulateStep(tree, particles, newParticles, stepParams, start, end);
     /* send newParticles to master */
 
-    
-    MPI_Allgatherv(
+    MPI_Gather(
       newParticles.data(), 
       newParticles.size() * sizeof(Particle), 
       MPI_BYTE, 
       particles.data(), 
-      recv_count,
-      displ, 
+      particles.size() * sizeof(Particle),
       MPI_BYTE,
+      0,
       MPI_COMM_WORLD
     );
-    // if (pid != COORDINATOR) { /* start waiting for response from coordinator */
-    //   MPI_Send((void *), end - start, MPI_INT, COORDINATOR, DEF_TAG, MPI_COMM_WORLD);
-    //   waiting = true;
-    // } else { /* coordinator receives responses from nodes */
-    //   memcpy(raw_particle_list, local_list, sizeof(local_list));
-    //   for (int i = 1; i < nproc; i++) {
-    //     size_t node_s, node_e;
-    //     MPI_Recv(local_list, end - start + 1, MPI_INT, i, DEF_TAG, MPI_COMM_WORLD, &status);
-    //     memcpy(raw_particle_list + node_s, local_list, node_e - node_s);
-    //   }
-    // }
+
     newParticles.clear();
   }
 

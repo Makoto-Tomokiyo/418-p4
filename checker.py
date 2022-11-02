@@ -72,6 +72,7 @@ for i, (scene_name, particle_num, space_size, iteration) in enumerate(scenes):
         log_file = f'logs/{scene_name}.log'
         cmd = f'mpirun -n {worker} {prog} {load_balance} -n {particle_num} -i {iteration} -in {init_file} -s {space_size} -o {output_file} > {log_file}'
         ret = os.system(cmd)
+        
         assert ret == 0, 'ERROR -- nbody exited with errors'
         compare(output_file, f'src/benchmark-files/{scene_name}-ref.txt')
         t = float(re.findall(
