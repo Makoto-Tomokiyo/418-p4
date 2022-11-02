@@ -86,50 +86,52 @@ int main(int argc, char *argv[]) {
 
 
   
-  // int displ[nproc];
-  // int recv_count[nproc];
-  // int bsize = num_particles / nproc;
-  // int r = num_particles % bsize;
-  // for (int id = 0; id < nproc; id++) { 
-  //   int s;
-  //   int e;
-  //   if (id < r) {
-  //     s = id * (bsize + 1);
-  //     e = s + bsize + 1;
-  //   } else {
-  //     s = r * (bsize + 1) + (id - r) * bsize;
-  //     e = s + bsize;
-  //   }
-  //   displ[id] = s * sizeof(Particle);
-  //   recv_count[id] = (e-s) * sizeof(Particle);
-  //   if (id == pid) {
-  //     start = s;
-  //     end = e;
-  //   }
-  // }
+  int displ[nproc];
+  int recv_count[nproc];
+  int bsize = num_particles / nproc;
+  int r = num_particles % bsize;
+  for (int id = 0; id < nproc; id++) { 
+    int s;
+    int e;
+    if (id < r) {
+      s = id * (bsize + 1);
+      e = s + bsize + 1;
+    } else {
+      s = r * (bsize + 1) + (id - r) * bsize;
+      e = s + bsize;
+    }
+    displ[id] = s * sizeof(Particle);
+    recv_count[id] = (e-s) * sizeof(Particle);
+    if (id == pid) {
+      start = s;
+      end = e;
+    }
+  }
 
 
   for (int i = 0; i < options.numIterations; i++) {
     /* coordinator sends particle data to all nodes */
     MPI_Bcast(
-    particles.data(), 
-    sizeof(Particle) * num_particles,
-    MPI_BYTE,
-    COORDINATOR,
-    MPI_COMM_WORLD);
+      particles.data(), 
+      sizeof(Particle) * num_particles,
+      MPI_BYTE,
+      COORDINATOR,
+      MPI_COMM_WORLD
+    );
 
-  MPI_Barrier(MPI_COMM_WORLD);
+    // MPI_Barrier(MPI_COMM_WORLD);
     QuadTree tree;
     QuadTree::buildQuadTree(particles, tree);
     simulateStep(tree, particles, newParticles, stepParams, start, end);
     /* send newParticles to master */
 
-    MPI_Gather(
+    MPI_Gatherv(
       newParticles.data(), 
       newParticles.size() * sizeof(Particle), 
       MPI_BYTE, 
       particles.data(), 
-      particles.size() * sizeof(Particle),
+      recv_count,
+      displ,
       MPI_BYTE,
       0,
       MPI_COMM_WORLD
