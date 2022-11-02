@@ -31,6 +31,7 @@ void simulateStep(const std::vector<Particle> &grid_particles,
       newParticles.push_back(new_p);
     }
   assert(newParticles.size() == grid_particles.size());
+  // TODO: update bmin bmax each iteration of simmulate step
 }
 
 std::tuple<std::vector<Particle>, std::vector<Particle>> 
@@ -43,10 +44,6 @@ getGridNeighbors(std::vector<Particle> particles,
   for (auto &p : particles) {
     if (p.position.x > min_x && p.position.x < max_x && p.position.y > min_y && p.position.y < max_y) {
       grid_particles.push_back(p);
-      neighbors.push_back(p);
-    }
-    else if (boxPointDistance(bmin, bmax, p.position) <= radius) {
-      neighbors.push_back(p);
     } 
   }
   return make_tuple(grid_particles, neighbors);
@@ -100,21 +97,18 @@ int main(int argc, char *argv[]) {
 
   
   for (int i = 0; i < options.numIterations; i++) {
+    // // The following code is just a demonstration.
+
+    // TODO: update global boundary array using allgather
+    // TODO: send to neighbors overlapping with grid bounds (async)
+    // TODO: receive sync from all neighbors we sent to 
+    QuadTree tree;
+    QuadTree::buildQuadTree(particles, tree);
     std::cerr<<i<<std::endl;
     newParticles.clear();
     if (i % 3 == 0) {
       auto tup = getGridNeighbors(particles, min_x, max_x, min_y, max_y);
       grid_particles.swap(std::get<0>(tup));
-      neighbors.swap(std::get<1>(tup));
-      std::cerr<<grid_particles.size()<<std::endl;
-      MPI_Allgather(
-      grid_particles.data(), 
-      grid_particles.size() * sizeof(Particle), 
-      MPI_BYTE, 
-      particles.data(), 
-      particles.size() * sizeof(Particle),
-      MPI_BYTE,
-      MPI_COMM_WORLD);
     }
     // std::cerr<<particles.size()<<std::endl;
     simulateStep(grid_particles, newParticles, neighbors, stepParams);
