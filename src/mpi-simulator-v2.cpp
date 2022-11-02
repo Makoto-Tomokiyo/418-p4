@@ -33,6 +33,7 @@ std::tuple<std::vector<Particle>, std::vector<Particle>> getGridNeighbors(std::v
   for (auto &p : particles) {
     if (p.position.x > min_x && p.position.x < max_x && p.position.y > min_y && p.position.y < max_y) {
       grid_particles.push_back(p);
+      neighbors.push_back(p);
     }
     else if (boxPointDistance(bmin, bmax, p.position) <= radius) {
       neighbors.push_back(p);
@@ -78,12 +79,18 @@ int main(int argc, char *argv[]) {
   std::vector<Particle> grid_particles;
   std::vector<Particle> neighbors;
 
+  int displ[nproc];
+  int recv_count[nproc];
+
 
   StepParameters stepParams = getBenchmarkStepParams(options.spaceSize);
   radius = stepParams.cullRadius;
   // Don't change the timeing for totalSimulationTime.
   MPI_Barrier(MPI_COMM_WORLD);
   Timer totalSimulationTimer;
+
+
+  
   for (int i = 0; i < options.numIterations; i++) {
     // // The following code is just a demonstration.
     // QuadTree tree;
@@ -95,11 +102,20 @@ int main(int argc, char *argv[]) {
       grid_particles.swap(std::get<0>(tup));
       neighbors.swap(std::get<1>(tup));
       std::cerr<<grid_particles.size()<<std::endl;
+      MPI_Allgather(
+      grid_particles.data(), 
+      grid_particles.size() * sizeof(Particle), 
+      MPI_BYTE, 
+      particles.data(), 
+      particles.size() * sizeof(Particle),
+      MPI_BYTE,
+      MPI_COMM_WORLD);
     }
     // std::cerr<<particles.size()<<std::endl;
     simulateStep(grid_particles, newParticles, neighbors, stepParams);
     // std::cerr<<"sim success"<<std::endl;
     grid_particles.swap(newParticles);
+    std::cerr<<grid_particles.size()<<std::endl;
     // std::cerr<<"swap"<<std::endl;
     if (i % 3 == 2) {
       std::cerr<<"trying gather..."<<std::endl;
