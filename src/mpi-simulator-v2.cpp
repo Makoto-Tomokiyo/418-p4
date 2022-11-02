@@ -3,11 +3,40 @@
 #include "quad-tree.h"
 #include "timing.h"
 
-void simulateStep(const QuadTree &quadTree,
-                  const std::vector<Particle> &particles,
-                  std::vector<Particle> &newParticles, StepParameters params) {
-  // TODO: paste your sequential implementation in Assignment 3 here.
-  // (or you may also rewrite a new version)
+
+int radius;
+
+void simulateStep(const std::vector<Particle> &particles,
+                  std::vector<Particle> &newParticles, std::vector<Particle> &neighbors, StepParameters params) {
+  // assert(newParticles.size() == 0);
+  for (size_t j = 0; j < particles.size(); j++) {
+      auto p = particles[j];
+      Vec2 force = Vec2(0.0f, 0.0f);
+      // quadTree.getParticles(neighbors, p.position, params.cullRadius);
+      /* Iterate through nearby particles and accumulate new force */
+      for (size_t i = 0; i < neighbors.size(); i++) {
+        Particle p1 = neighbors[i];
+        force += computeForce(p, p1, params.cullRadius);
+      }
+      /* Update force */
+      newParticles[j] = updateParticle(p, force, params.deltaTime);
+    }
+}
+
+std::tuple<std::vector<Particle>, std::vector<Particle>> getGridNeighbors(std::vector<Particle> particles, int min_x, int max_x, int min_y, int max_y) {
+  Vec2 bmin = Vec2(min_x, min_y);
+  Vec2 bmax = Vec2(max_x, max_y);
+  std::vector<Particle> grid_particles;
+  std::vector<Particle> neighbors;
+  for (auto &p : particles) {
+    if (p.position.x > min_x && p.position.x < max_x && p.position.y > min_y && p.position.y < max_y) {
+      grid_particles.push_back(p);
+    }
+    else if (boxPointDistance(bmin, bmax, p.position) <= radius) {
+      neighbors.push_back(p);
+    } 
+  }
+  return make_tuple(grid_particles, neighbors);
 }
 
 int main(int argc, char *argv[]) {
@@ -28,17 +57,58 @@ int main(int argc, char *argv[]) {
     loadFromFile(options.inputFile, particles);
   }
 
-  StepParameters stepParams = getBenchmarkStepParams(options.spaceSize);
 
+  Vec2 bmin(1e30f, 1e30f);
+  Vec2 bmax(-1e30f, -1e30f);
+
+  for (auto &p : particles) {
+    bmin.x = fminf(bmin.x, p.position.x);
+    bmin.y = fminf(bmin.y, p.position.y);
+    bmax.x = fmaxf(bmax.x, p.position.x);
+    bmax.y = fmaxf(bmax.y, p.position.y);
+  }
+
+  int dim = sqrt(nproc);
+  int x_size = floor((bmax.x - bmin.x) / dim);
+  int y_size = floor((bmax.y - bmin.y) / dim);
+  printf("x_size: %d, y_size: %d\n\n", x_size, y_size);
+  int min_x = x_size * floor(pid / dim);
+  int min_y = x_size * (pid % dim);
+  int max_x = min_x + x_size;
+  int max_y = min_y + x_size;
+
+  std::vector<Particle> grid_particles;
+  std::vector<Particle> neighbors;
+
+
+  StepParameters stepParams = getBenchmarkStepParams(options.spaceSize);
+  radius = stepParams.cullRadius;
   // Don't change the timeing for totalSimulationTime.
   MPI_Barrier(MPI_COMM_WORLD);
   Timer totalSimulationTimer;
+
   for (int i = 0; i < options.numIterations; i++) {
-    // The following code is just a demonstration.
-    QuadTree tree;
-    QuadTree::buildQuadTree(particles, tree);
-    simulateStep(tree, particles, newParticles, stepParams);
-    particles.swap(newParticles);
+    // // The following code is just a demonstration.
+    // QuadTree tree;
+    // QuadTree::buildQuadTree(particles, tree);
+    if (i % 3 == 0) {
+      auto tup = getGridNeighbors(particles, min_x, max_x, min_y, max_y);
+      grid_particles.swap(std::get<0>(tup));
+      neighbors.swap(std::get<1>(tup));
+    }
+    simulateStep(grid_particles, newParticles, neighbors, stepParams);
+    grid_particles.swap(newParticles);
+    if (i % 3 == 0) {
+      MPI_Allgather(
+        grid_particles.data(), 
+        grid_particles.size() * sizeof(Particle), 
+        MPI_BYTE, 
+        particles.data(), 
+        particles.size() * sizeof(Particle),
+        MPI_BYTE,
+        MPI_COMM_WORLD);
+    }
+    
   }
   MPI_Barrier(MPI_COMM_WORLD);
   double totalSimulationTime = totalSimulationTimer.elapsed();
