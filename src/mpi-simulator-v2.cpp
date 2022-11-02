@@ -3,9 +3,16 @@
 #include "quad-tree.h"
 #include "timing.h"
 
+typedef int proc_idx_t;
 
 int radius;
 int dim;
+
+proc_idx_t get_pid_of_coord(Vec2 coords) {
+  int x = (int)coords.x % dim;
+  int y = (int)coords.y / dim;
+  return y * dim + x;
+}
 
 void simulateStep(const std::vector<Particle> &grid_particles,
                   std::vector<Particle> &newParticles, std::vector<Particle> &neighbors, StepParameters params) {
@@ -26,7 +33,9 @@ void simulateStep(const std::vector<Particle> &grid_particles,
   assert(newParticles.size() == grid_particles.size());
 }
 
-std::tuple<std::vector<Particle>, std::vector<Particle>> getGridNeighbors(std::vector<Particle> particles, int min_x, int max_x, int min_y, int max_y) {
+std::tuple<std::vector<Particle>, std::vector<Particle>> 
+getGridNeighbors(std::vector<Particle> particles, 
+                 int min_x, int max_x, int min_y, int max_y) {
   Vec2 bmin = Vec2(min_x, min_y);
   Vec2 bmax = Vec2(max_x, max_y);
   std::vector<Particle> grid_particles;
@@ -70,7 +79,6 @@ int main(int argc, char *argv[]) {
 
   dim = sqrt(nproc);
   int x_size = 500;
-  // int y_size = floor((bmax.y - bmin.y) / dim);
   int min_x = x_size * floor(pid / dim) - 500; 
   int min_y = x_size * (pid % dim) - 500;
   int max_x = min_x + x_size;
@@ -78,6 +86,9 @@ int main(int argc, char *argv[]) {
 
   int displ[nproc];
   int recv_count[nproc];
+
+  std::vector<Particle> grid_particles;
+  std::vector<Particle> neighbors;
 
 
   StepParameters stepParams = getBenchmarkStepParams(options.spaceSize);
@@ -89,9 +100,6 @@ int main(int argc, char *argv[]) {
 
   
   for (int i = 0; i < options.numIterations; i++) {
-    // // The following code is just a demonstration.
-    // QuadTree tree;
-    // QuadTree::buildQuadTree(particles, tree);
     std::cerr<<i<<std::endl;
     newParticles.clear();
     if (i % 3 == 0) {
