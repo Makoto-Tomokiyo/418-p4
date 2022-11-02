@@ -14,11 +14,20 @@ inline proc_idx_t get_pid_of_coord(Vec2 coords) {
   return y * dim + x;
 }
 
-void simulateStep(const std::vector<Particle> &grid_particles,
-                  std::vector<Particle> &newParticles, std::vector<Particle> &neighbors, StepParameters params) {
-  // assert(newParticles.size() == 0);
-  for (size_t j = 0; j < grid_particles.size(); j++) {
-      auto p = grid_particles[j];
+inline void recompute_bounds(Particle p, Vec2 &bmin, Vec2 &bmax) {
+  bmin.x = fminf(bmin.x, p.position.x);
+  bmin.y = fminf(bmin.y, p.position.y);
+  bmax.x = fmaxf(bmax.x, p.position.x);
+  bmax.y = fmaxf(bmax.y, p.position.y);
+}
+
+void simulateStep(const std::vector<Particle> &local_particles,
+                  std::vector<Particle> &newParticles, 
+                  std::vector<Particle> &neighbors, 
+                  StepParameters params, Vec2 &bmin, Vec2 &bmax) {
+  /* update each local particle */
+  for (size_t j = 0; j < local_particles.size(); j++) {
+      auto p = local_particles[j];
       Vec2 force = Vec2(0.0f, 0.0f);
       // quadTree.getParticles(neighbors, p.position, params.cullRadius);
       /* Iterate through nearby particles and accumulate new force */
@@ -29,9 +38,9 @@ void simulateStep(const std::vector<Particle> &grid_particles,
       /* Update force */
       Particle new_p = updateParticle(p, force, params.deltaTime);
       newParticles.push_back(new_p);
+      recompute_bounds(new_p, bmin, bmax);
     }
-  assert(newParticles.size() == grid_particles.size());
-  // TODO: update bmin bmax each iteration of simmulate step
+  assert(newParticles.size() == local_particles.size());
 }
 
 std::tuple<std::vector<Particle>, std::vector<Particle>> 
@@ -68,10 +77,7 @@ int main(int argc, char *argv[]) {
   Vec2 bmax(-1e30f, -1e30f);
 
   for (auto &p : particles) {
-    bmin.x = fminf(bmin.x, p.position.x);
-    bmin.y = fminf(bmin.y, p.position.y);
-    bmax.x = fmaxf(bmax.x, p.position.x);
-    bmax.y = fmaxf(bmax.y, p.position.y);
+    recompute_bounds(p, bmin, bmax);
   }
 
   dim = sqrt(nproc);
