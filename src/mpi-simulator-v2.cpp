@@ -8,7 +8,7 @@ typedef int proc_idx_t;
 int radius;
 int dim;
 
-proc_idx_t get_pid_of_coord(Vec2 coords) {
+inline proc_idx_t get_pid_of_coord(Vec2 coords) {
   int x = (int)coords.x % dim;
   int y = (int)coords.y / dim;
   return y * dim + x;
