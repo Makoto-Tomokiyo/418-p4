@@ -6,11 +6,11 @@
 
 int radius;
 
-void simulateStep(const std::vector<Particle> &particles,
+void simulateStep(const std::vector<Particle> &grid_particles,
                   std::vector<Particle> &newParticles, std::vector<Particle> &neighbors, StepParameters params) {
   // assert(newParticles.size() == 0);
-  for (size_t j = 0; j < particles.size(); j++) {
-      auto p = particles[j];
+  for (size_t j = 0; j < grid_particles.size(); j++) {
+      auto p = grid_particles[j];
       Vec2 force = Vec2(0.0f, 0.0f);
       // quadTree.getParticles(neighbors, p.position, params.cullRadius);
       /* Iterate through nearby particles and accumulate new force */
@@ -22,6 +22,7 @@ void simulateStep(const std::vector<Particle> &particles,
       Particle new_p = updateParticle(p, force, params.deltaTime);
       newParticles.push_back(new_p);
     }
+  assert(newParticles.size() == grid_particles.size());
 }
 
 std::tuple<std::vector<Particle>, std::vector<Particle>> getGridNeighbors(std::vector<Particle> particles, int min_x, int max_x, int min_y, int max_y) {
@@ -66,12 +67,13 @@ int main(int argc, char *argv[]) {
   }
 
   int dim = sqrt(nproc);
-  int x_size = floor((bmax.x - bmin.x) / dim);
-  int y_size = floor((bmax.y - bmin.y) / dim);
-  int min_x = x_size * floor(pid / dim);
-  int min_y = x_size * (pid % dim);
+  int x_size = 500;
+  // int y_size = floor((bmax.y - bmin.y) / dim);
+  int min_x = x_size * floor(pid / dim) - 500; 
+  int min_y = x_size * (pid % dim) - 500;
   int max_x = min_x + x_size;
   int max_y = min_y + x_size;
+
 
   std::vector<Particle> grid_particles;
   std::vector<Particle> neighbors;
@@ -87,19 +89,21 @@ int main(int argc, char *argv[]) {
     // QuadTree tree;
     // QuadTree::buildQuadTree(particles, tree);
     std::cerr<<i<<std::endl;
-
+    newParticles.clear();
     if (i % 3 == 0) {
       auto tup = getGridNeighbors(particles, min_x, max_x, min_y, max_y);
       grid_particles.swap(std::get<0>(tup));
       neighbors.swap(std::get<1>(tup));
+      std::cerr<<grid_particles.size()<<std::endl;
     }
-    // std::cerr<<"grid/neighbors built"<<std::endl;
+    // std::cerr<<particles.size()<<std::endl;
     simulateStep(grid_particles, newParticles, neighbors, stepParams);
     // std::cerr<<"sim success"<<std::endl;
     grid_particles.swap(newParticles);
     // std::cerr<<"swap"<<std::endl;
     if (i % 3 == 2) {
       std::cerr<<"trying gather..."<<std::endl;
+      std::cerr<<grid_particles.size()<<std::endl;
       MPI_Allgather(
         grid_particles.data(), 
         grid_particles.size() * sizeof(Particle), 
