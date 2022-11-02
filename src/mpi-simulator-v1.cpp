@@ -89,10 +89,6 @@ int main(int argc, char *argv[]) {
 
   // Don't change the timeing for totalSimulationTime.
   MPI_Barrier(MPI_COMM_WORLD);
-  Timer totalSimulationTimer;
-
-
-  
   int displ[nproc];
   int recv_count[nproc];
   int bsize = num_particles / nproc;
@@ -115,18 +111,10 @@ int main(int argc, char *argv[]) {
       end = e;
     }
   }
-
+  Timer totalSimulationTimer;
 
   for (int i = 0; i < options.numIterations; i++) {
     /* coordinator sends particle data to all nodes */
-    // The following code is just a demonstration.
-    // printf("iteration %d\n", i);
-    if (pid == 0) {
-      std::cerr<<i<<std::endl;
-      // std::cerr<<&displ<<std::endl;
-      // std::cerr<<&recv_count<<std::endl;
-    }
-    // std::cerr<<i<<std::endl;
     QuadTree tree;
     QuadTree::buildQuadTree(particles, tree);
     simulateStep(tree, particles, newParticles, stepParams, start, end);
@@ -143,17 +131,6 @@ int main(int argc, char *argv[]) {
       MPI_BYTE,
       MPI_COMM_WORLD
     );
-    // if (pid != COORDINATOR) { /* start waiting for response from coordinator */
-    //   MPI_Send((void *), end - start, MPI_INT, COORDINATOR, DEF_TAG, MPI_COMM_WORLD);
-    //   waiting = true;
-    // } else { /* coordinator receives responses from nodes */
-    //   memcpy(raw_particle_list, local_list, sizeof(local_list));
-    //   for (int i = 1; i < nproc; i++) {
-    //     size_t node_s, node_e;
-    //     MPI_Recv(local_list, end - start + 1, MPI_INT, i, DEF_TAG, MPI_COMM_WORLD, &status);
-    //     memcpy(raw_particle_list + node_s, local_list, node_e - node_s);
-    //   }
-    // }
     newParticles.clear();
   }
 
