@@ -198,12 +198,12 @@ int main(int argc, char *argv[]) {
     // std::cerr << "num neighbors for proc " << pid << ": " << num_neighbor_procs << std::endl;
     MPI_Request send_reqs[num_neighbor_procs];
     for (int j = 0; j < num_neighbor_procs; j++) {
-      proc_idx_t idx = neighbor_procs[j];
+      proc_idx_t cur_neighbor = neighbor_procs[j];
       MPI_Isend(
         local_particles.data(), 
         num_local_particles * sizeof(Particle), 
         MPI_BYTE, 
-        idx,
+        cur_neighbor,
         DEF_TAG,
         MPI_COMM_WORLD,
         &send_reqs[j]);
@@ -224,11 +224,12 @@ int main(int argc, char *argv[]) {
     neighbors.resize(num_neighbor_particles);
     MPI_Request recv_reqs[num_neighbor_procs];
     for (int j = 0; j < num_neighbor_procs; j++) {
+      proc_idx_t cur_neighbor = neighbor_procs[j];
       MPI_Irecv(
-        &(neighbors.data())[neighbors_displ[j]], 
-        (particle_list_sizes[neighbor_procs[j]]) * sizeof(Particle),
+        &(neighbors.data())[neighbors_displ[cur_neighbor]], 
+        (particle_list_sizes[cur_neighbor]) * sizeof(Particle),
         MPI_BYTE,
-        neighbor_procs[j],
+        cur_neighbor,
         DEF_TAG,
         MPI_COMM_WORLD,
         &recv_reqs[j]);
