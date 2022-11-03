@@ -3,6 +3,7 @@
 #include "quad-tree.h"
 #include "timing.h"
 
+#define DEF_TAG 0
 #define COORDINATOR 0
 #define REBUILD_GRANULARITY 8
 
@@ -93,17 +94,11 @@ int main(int argc, char *argv[]) {
   StartupOptions options = parseOptions(argc, argv);
 
   std::vector<proc_idx_t> neighbor_procs;
-  std::vector<Particle> particles, newParticles, local_particles, neighbors;
+  std::vector<Particle> particles, new_particles, local_particles, neighbors;
   loadFromFile(options.inputFile, particles);
   int total_particles = particles.size();
   Vec2 bmin(1e30f, 1e30f);
   Vec2 bmax(-1e30f, -1e30f);
-
-
-  int displ[nproc];
-  int recv_count[nproc];
-  // uint8_t all_particles_sendbuf[particles.size() * sizeof(Particle)];
-  // uint8_t all_particles_recvbuf[particles.size() * sizeof(Particle)];
 
   StepParameters stepParams = getBenchmarkStepParams(options.spaceSize);
   radius = stepParams.cullRadius;
@@ -111,14 +106,11 @@ int main(int argc, char *argv[]) {
   MPI_Barrier(MPI_COMM_WORLD);
   Timer totalSimulationTimer;
   
+  int num_local_particles;
   int particle_list_sizes[nproc];
   int particle_list_displ[nproc];
 
   for (int i = 0; i < options.numIterations; i++) {
-    // TODO: update global boundary array using allgather
-    // TODO: send to neighbors overlapping with grid bounds (async)
-    // TODO: receive sync from all neighbors we sent to 
-    QuadTree tree;
     if (i % REBUILD_GRANULARITY == 0) {
       if (i != 0) {
         // combine new particles into particles.data() 
@@ -130,7 +122,7 @@ int main(int argc, char *argv[]) {
       recompute_local_particles(particles, local_particles);
 
       // communicate size of each particle list
-      int num_local_particles = local_particles.size();
+      num_local_particles = local_particles.size();
       MPI_Allgather(&num_local_particles, 1, MPI_INT,
         particle_list_sizes, 1, MPI_INT, MPI_COMM_WORLD);
 
@@ -160,40 +152,55 @@ int main(int argc, char *argv[]) {
       }
     }
 
-    // send local particles
-    for (auto j : neighbor_procs) {
+    // async send local particles
+    int num_neighbor_procs = neighbor_procs.size();
+    MPI_Request req_handlers[num_neighbor_procs];
+    for (int j = 0; j < num_neighbor_procs; j++) {
+      proc_idx_t idx = neighbor_procs[j];
+      MPI_Isend(
+        local_particles.data(), 
+        num_local_particles * sizeof(Particle), 
+        MPI_BYTE, 
+        idx,
+        DEF_TAG,
+        MPI_COMM_WORLD,
+        &req_handlers[j]);
+    }
 
+    // determine offsets to receive data from (prefix sum)
+    int neighbors_displ[num_neighbor_procs];
+    int num_neighbor_particles = 0;
+    for (int j = 0; j < num_neighbor_procs; j++) {
+      neighbors_displ[j] = num_neighbor_particles;
+      num_neighbor_particles += particle_list_sizes[neighbor_procs[j]];
     }
 
     // receive neighbors' particles (make async later)
-
-    // run simulation
-    QuadTree::buildQuadTree(particles, tree);
-    std::cerr<<i<<std::endl;
-    newParticles.clear();
-    if (i % 3 == 0) {
-      auto tup = getGridNeighbors(particles, min_x, max_x, min_y, max_y);
-      grid_particles.swap(std::get<0>(tup));
-    }
-    // std::cerr<<particles.size()<<std::endl;
-    simulateStep(grid_particles, newParticles, neighbors, stepParams, bmin, bmax);
-    // std::cerr<<"sim success"<<std::endl;
-    grid_particles.swap(newParticles);
-    std::cerr<<grid_particles.size()<<std::endl;
-    // std::cerr<<"swap"<<std::endl;
-    if (i % 3 == 2) {
-      std::cerr<<"trying gather..."<<std::endl;
-      std::cerr<<grid_particles.size()<<std::endl;
-      MPI_Allgather(
-        grid_particles.data(), 
-        grid_particles.size() * sizeof(Particle), 
-        MPI_BYTE, 
-        particles.data(), 
-        particles.size() * sizeof(Particle),
+    // WARNING: neighbors excludes locals here
+    MPI_Status statuses[num_neighbor_procs];
+    neighbors.clear();
+    neighbors.resize(num_neighbor_particles);
+    for (int j = 0; j < num_neighbor_procs; j++) {
+      MPI_Recv(
+        neighbors.data() + neighbors_displ[j], 
+        (particle_list_sizes[neighbor_procs[j]]) * sizeof(Particle),
         MPI_BYTE,
-        MPI_COMM_WORLD);
-      std::cerr<<"gather done"<<std::endl;
+        neighbor_procs[j],
+        DEF_TAG,
+        MPI_COMM_WORLD,
+        &statuses[j]);
     }
+
+    // add local particles to neighbors
+    for (auto p : local_particles) {
+      neighbors.push_back(p);
+    }
+
+    // run simulation iteration
+    QuadTree tree;
+    QuadTree::buildQuadTree(particles, tree);
+    simulateStep(local_particles, new_particles, neighbors, stepParams, bmin, bmax);
+    
   MPI_Barrier(MPI_COMM_WORLD);
   }
   double totalSimulationTime = totalSimulationTimer.elapsed();
