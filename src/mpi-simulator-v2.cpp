@@ -81,20 +81,20 @@ void recompute_local_particles(const std::vector<Particle> &particles,
   }
 }
 
-std::tuple<std::vector<Particle>, std::vector<Particle>> 
-getGridNeighbors(std::vector<Particle> particles, 
-                 int min_x, int max_x, int min_y, int max_y) {
-  Vec2 bmin = Vec2(min_x, min_y);
-  Vec2 bmax = Vec2(max_x, max_y);
-  std::vector<Particle> grid_particles;
-  std::vector<Particle> neighbors;
-  for (auto &p : particles) {
-    if (p.position.x > min_x && p.position.x < max_x && p.position.y > min_y && p.position.y < max_y) {
-      grid_particles.push_back(p);
-    } 
-  }
-  return make_tuple(grid_particles, neighbors);
-}
+// std::tuple<std::vector<Particle>, std::vector<Particle>> 
+// getGridNeighbors(std::vector<Particle> particles, 
+//                  int min_x, int max_x, int min_y, int max_y) {
+//   Vec2 bmin = Vec2(min_x, min_y);
+//   Vec2 bmax = Vec2(max_x, max_y);
+//   std::vector<Particle> grid_particles;
+//   std::vector<Particle> neighbors;
+//   for (auto &p : particles) {
+//     if (p.position.x > min_x && p.position.x < max_x && p.position.y > min_y && p.position.y < max_y) {
+//       grid_particles.push_back(p);
+//     } 
+//   }
+//   return make_tuple(grid_particles, neighbors);
+// }
 
 int main(int argc, char *argv[]) {
 
@@ -208,6 +208,7 @@ int main(int argc, char *argv[]) {
         MPI_COMM_WORLD,
         &send_reqs[j]);
     }
+    cprint << "Sent messages." << std::endl;
 
     // determine offsets to receive data from (prefix sum)
     int neighbors_displ[num_neighbor_procs];
@@ -217,27 +218,33 @@ int main(int argc, char *argv[]) {
       num_neighbor_particles += particle_list_sizes[neighbor_procs[j]];
     }
 
-    // receive neighbors' particles (make async later)
+    // receive neighbors' particles (async)
     // WARNING: neighbors excludes locals here
-    // MPI_Status statuses[num_neighbor_procs];
+    MPI_Status statuses[num_neighbor_procs];
     neighbors.clear();
     neighbors.resize(num_neighbor_particles);
-    MPI_Request recv_reqs[num_neighbor_procs];
+    std::cerr << "[Process " << pid << "] Num neighbor particles: " << num_neighbor_particles << std::endl;
+    // MPI_Request recv_reqs[num_neighbor_procs];
     for (int j = 0; j < num_neighbor_procs; j++) {
       proc_idx_t cur_neighbor = neighbor_procs[j];
-      MPI_Irecv(
-        &(neighbors.data())[neighbors_displ[cur_neighbor]], 
-        (particle_list_sizes[cur_neighbor]) * sizeof(Particle),
+      void *dest_buf = (void *)&((Particle *)neighbors.data())[neighbors_displ[cur_neighbor]];
+      int recv_bytes = (particle_list_sizes[cur_neighbor]) * sizeof(Particle);
+      MPI_Recv(
+        dest_buf, 
+        recv_bytes,
         MPI_BYTE,
         cur_neighbor,
         DEF_TAG,
         MPI_COMM_WORLD,
-        &recv_reqs[j]);
+        &statuses[j]);
+        // &recv_reqs[j]);
+      // cprint << "Receiving at address " << (unsigned long)&(neighbors.data())[neighbors_displ[cur_neighbor]] << std::endl;
     }
     for (int j = 0; j < num_neighbor_procs; j++) {
       MPI_Wait(&send_reqs[j], MPI_STATUS_IGNORE);
-      MPI_Wait(&recv_reqs[j], MPI_STATUS_IGNORE);
-      printf("[Process %d] The MPI_Irecv completed, therefore so does the underlying MPI_Recv.\n", pid);
+      // MPI_Wait(&recv_reqs[j], MPI_STATUS_IGNORE);
+      fprintf(stderr, "[Process %d] The MPI_Irecv completed, therefore so does the underlying MPI_Recv.\n", pid);
+      fflush(stderr);
     }
 
     // add local particles to neighbors
@@ -250,7 +257,7 @@ int main(int argc, char *argv[]) {
     QuadTree::buildQuadTree(particles, tree);
     simulateStep(local_particles, new_particles, neighbors, stepParams, bmin, bmax);
     
-  MPI_Barrier(MPI_COMM_WORLD);
+  // MPI_Barrier(MPI_COMM_WORLD);
   }
   double totalSimulationTime = totalSimulationTimer.elapsed();
 
