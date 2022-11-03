@@ -1,6 +1,7 @@
 #include "common.h"
 #include "mpi.h"
 #include "quad-tree.h"
+#include <unordered_map>
 
 #include "timing.h"
 #define DEF_TAG 0
@@ -21,11 +22,12 @@ const int spacedim = 1000;
 
 inline proc_idx_t get_pid_of_coord(Vec2 coords, float x_blocksize, float y_blocksize) {
   assert(coords.x < 1000 && coords.y < 1000);
-  int x = (int) (coords.x / x_blocksize);
-  int y = (int) (coords.y / y_blocksize);
+  int x = (int) coords.x / ceil(x_blocksize);
+  int y = (int) coords.y / ceil(y_blocksize);
   int retval = y * dim + x;
   if (retval >= nproc) {
-    std::cerr << "retval: " << retval << std::endl;
+    std::cerr << "x_size: " << x_blocksize << " y_size:" << y_blocksize << std::endl;
+    std::cerr << "retval: " << retval << " x:" << x << " y:" << y << " coords: (" << coords.x << ", " << coords.y << ")" << std::endl;
     // assert(false);
   }
   return retval;
@@ -57,6 +59,8 @@ void simulateStep(const std::vector<Particle> &local_particles,
                   StepParameters params, Vec2 &bmin, Vec2 &bmax) {
   assert(newParticles.size() == 0);
   /* update each local particle */
+  // std::cerr << "tree size:" << neighbors.size() << " local size:" << local_particles.size() << std::endl;
+
   for (size_t j = 0; j < local_particles.size(); j++) {
       auto p = local_particles[j];
       Vec2 force = Vec2(0.0f, 0.0f);
@@ -114,10 +118,11 @@ int main(int argc, char *argv[]) {
   radius = stepParams.cullRadius;
   // Don't change the timeing for totalSimulationTime.
   MPI_Barrier(MPI_COMM_WORLD);
-  std::map<int, int> ord;
+std::unordered_map<int, int> ord;
   int i = 0;
   for (auto p : particles) {
-    ord.insert(p.id, i);
+    std::pair<int, int> elem (p.id, i);
+    ord.insert(elem);
     i += 1;
   }
 
@@ -279,6 +284,7 @@ int main(int argc, char *argv[]) {
     QuadTree::buildQuadTree(particles, tree);
     new_particles.clear();
     simulateStep(local_particles, new_particles, neighbors, stepParams, bmin, bmax);
+    local_particles.swap(new_particles);
     
   MPI_Barrier(MPI_COMM_WORLD);
   // cprint << "Finished iteration " << i << std::endl;
@@ -298,15 +304,14 @@ int main(int argc, char *argv[]) {
     particle_list_displ,
     MPI_BYTE,
     MPI_COMM_WORLD);
-    
-  std::vector<Particle> target;
-  target.resize(particles.size());
-  for (auto p : particles) {
-    int position = ord.find(p.id);
-    target[position] = p;
-  }
 
   if (pid == 0) {
+    std::vector<Particle> target;
+    target.resize(particles.size());
+    for (auto p : particles) {
+      int position = ord[p.id];
+      target[position] = p;
+    }
     printf("total simulation time: %.6fs\n", totalSimulationTime);
     saveToFile(options.outputFile, target);
   }
