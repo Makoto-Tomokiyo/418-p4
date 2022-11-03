@@ -19,11 +19,15 @@ int blocksize;
 proc_idx_t pid;
 const int spacedim = 1000;
 
-inline proc_idx_t get_pid_of_coord(Vec2 coords, int x_blocksize, int y_blocksize) {
+inline proc_idx_t get_pid_of_coord(Vec2 coords, float x_blocksize, float y_blocksize) {
+  assert(coords.x < 1000 && coords.y < 1000);
   int x = (int) (coords.x / x_blocksize);
   int y = (int) (coords.y / y_blocksize);
   int retval = y * dim + x;
-  assert(retval < nproc);
+  if (retval >= nproc) {
+    std::cerr << "retval: " << retval << std::endl;
+    // assert(false);
+  }
   return retval;
 }
 
@@ -71,13 +75,15 @@ void simulateStep(const std::vector<Particle> &local_particles,
 }
 
 void recompute_local_particles(const std::vector<Particle> &particles,
-                               std::vector<Particle> &new_particles, Vec2 global_max, Vec2 global_min) {
+                               std::vector<Particle> &new_particles, 
+                               Vec2 global_max, Vec2 global_min) {
   assert(new_particles.size() == 0);
+  float spacedim_x = global_max.x - global_min.x;
+  float spacedim_y = global_max.y - global_min.y;
+  // cprint << "[x, y] dims: " << spacedim_x << ", " << spacedim_y << std::endl;
   for (auto p : particles) {
-    int spacedim_x = global_max.x - global_min.x;
-    int spacedim_y = global_max.y - global_min.y;
-    int x_blocksize = (int) (spacedim_x / dim);
-    int y_blocksize = (int) (spacedim_y / dim);
+    float x_blocksize = (spacedim_x / dim);
+    float y_blocksize = (spacedim_y / dim);
     Vec2 coord(p.position.x - global_min.x, p.position.y - global_min.y);
     proc_idx_t place = get_pid_of_coord(coord, x_blocksize, y_blocksize);
     if (place == pid)
@@ -113,30 +119,22 @@ int main(int argc, char *argv[]) {
   int num_local_particles;
   int particle_list_sizes[nproc];
   int particle_list_displ[nproc];
+  bound_t local_bounds;
+  bound_t all_bounds[nproc];
 
   for (int i = 0; i < options.numIterations; i++) {
-    bound_t local_bounds;
-    bound_t all_bounds[nproc];
     if (i % REBUILD_GRANULARITY == 0) {
-      // cprint << "Getting bounds at iteration " << i << std::endl;
-      // cprint << "Got bounds." << std::endl;
+
       local_bounds = {bmin, bmax};
       MPI_Allgather(&local_bounds, sizeof(bound_t), MPI_BYTE, 
         all_bounds, sizeof(bound_t), MPI_BYTE, MPI_COMM_WORLD);
 
-      Vec2 global_max = Vec2(1e30f, 1e30f);
-      Vec2 global_min = Vec2(-1e30f, -1e30f);
-      for (auto bound : all_bounds) {
-        global_min.x = fminf(global_min.x, bound.min.x);
-        global_min.y = fminf(global_min.y, bound.min.y);
-        global_max.x = fmaxf(global_max.x, bound.max.x);
-        global_max.y = fmaxf(global_max.y, bound.max.y);
-      }
+      Vec2 global_min = Vec2(1e30f, 1e30f);
+      Vec2 global_max = Vec2(-1e30f, -1e30f);
 
       if (i != 0) {
         // combine new particles into particles.data() 
         // by allgathering local particle list
-        // cprint << "recomputing particle list at iteration " << i << std::endl;
         MPI_Allgatherv(
           local_particles.data(), 
           num_local_particles * sizeof(Particle),
@@ -146,12 +144,24 @@ int main(int argc, char *argv[]) {
           particle_list_displ,
           MPI_BYTE,
           MPI_COMM_WORLD);
+
+        // update global bounds based on collective bound data
+        for (auto bound : all_bounds) {
+          global_min.x = fminf(global_min.x, bound.min.x);
+          global_min.y = fminf(global_min.y, bound.min.y);
+          global_max.x = fmaxf(global_max.x, bound.max.x);
+          global_max.y = fmaxf(global_max.y, bound.max.y);
+        }
+      } else { // initialize global bounds
+        for (auto p : particles) {
+          update_bounds(p, global_min, global_max);
+        }
       }
       
       // recompute which particles belong to this process
       local_particles.clear();
       recompute_local_particles(particles, local_particles, global_max, global_min);
-      // std::cerr << local_particles.size() << std::endl;
+      std::cerr << "size of local particles: " << local_particles.size() << std::endl;
 
       // communicate size of each particle list
       num_local_particles = local_particles.size();
@@ -223,35 +233,30 @@ int main(int argc, char *argv[]) {
 
     // receive neighbors' particles (async)
     // WARNING: neighbors excludes locals here
-    MPI_Status statuses[num_neighbor_procs];
     neighbors.clear();
     neighbors.resize(num_neighbor_particles);
     void *dest = malloc(particles.size() * sizeof(Particle));
     if (dest == NULL) exit(1);
-    // std::cerr << "[Process " << pid << "] Num neighbor particles: " << num_neighbor_particles << std::endl;
-    // MPI_Request recv_reqs[num_neighbor_procs];
+    MPI_Request recv_reqs[num_neighbor_procs];
     int counter = 0;
     for (int j = 0; j < num_neighbor_procs; j++) {
       proc_idx_t cur_neighbor = neighbor_procs[j];
       void *dest_buf = (void *)((char *)dest + counter * sizeof(Particle));
-      // void *dest_buf = &neighbors.data()[neighbors_displ[cur_neighbor]];
-      // assert(dest_buf >= neighbors.data() && (size_t)dest_buf < (size_t)(neighbors.data()) + num_neighbor_particles * sizeof(Particle));
       int recv_bytes = (particle_list_sizes[cur_neighbor]) * sizeof(Particle);
       
-      MPI_Recv(
+      MPI_Irecv(
         dest_buf, 
         recv_bytes,
         MPI_BYTE,
         cur_neighbor,
         DEF_TAG,
         MPI_COMM_WORLD,
-        &statuses[j]);
-        // &recv_reqs[j]);
+        &recv_reqs[j]);
       counter += particle_list_sizes[cur_neighbor];
     }
     for (int j = 0; j < num_neighbor_procs; j++) {
       MPI_Wait(&send_reqs[j], MPI_STATUS_IGNORE);
-      // MPI_Wait(&recv_reqs[j], MPI_STATUS_IGNORE);
+      MPI_Wait(&recv_reqs[j], MPI_STATUS_IGNORE);
       // fprintf(stderr, "[Process %d] The MPI_Irecv completed, therefore so does the underlying MPI_Recv.\n", pid);
       // fflush(stderr);
     }
