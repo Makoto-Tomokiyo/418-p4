@@ -114,6 +114,13 @@ int main(int argc, char *argv[]) {
   radius = stepParams.cullRadius;
   // Don't change the timeing for totalSimulationTime.
   MPI_Barrier(MPI_COMM_WORLD);
+  std::map<int, int> ord;
+  int i = 0;
+  for (auto p : particles) {
+    ord.insert(p.id, i);
+    i += 1;
+  }
+
   Timer totalSimulationTimer;
   
   int num_local_particles;
@@ -291,9 +298,17 @@ int main(int argc, char *argv[]) {
     particle_list_displ,
     MPI_BYTE,
     MPI_COMM_WORLD);
+    
+  std::vector<Particle> target;
+  target.resize(particles.size());
+  for (auto p : particles) {
+    int position = ord.find(p.id);
+    target[position] = p;
+  }
+
   if (pid == 0) {
     printf("total simulation time: %.6fs\n", totalSimulationTime);
-    saveToFile(options.outputFile, particles);
+    saveToFile(options.outputFile, target);
   }
 
   MPI_Finalize();
