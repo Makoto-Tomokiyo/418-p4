@@ -19,9 +19,9 @@ int blocksize;
 proc_idx_t pid;
 const int spacedim = 1000;
 
-inline proc_idx_t get_pid_of_coord(Vec2 coords) {
-  int x = (int) (coords.x / blocksize);
-  int y = (int) (coords.y / blocksize);
+inline proc_idx_t get_pid_of_coord(Vec2 coords, int x_blocksize, int y_blocksize) {
+  int x = (int) (coords.x / x_blocksize);
+  int y = (int) (coords.y / y_blocksize);
   int retval = y * dim + x;
   assert(retval < nproc);
   return retval;
@@ -71,11 +71,15 @@ void simulateStep(const std::vector<Particle> &local_particles,
 }
 
 void recompute_local_particles(const std::vector<Particle> &particles,
-                               std::vector<Particle> &new_particles) {
+                               std::vector<Particle> &new_particles, Vec2 global_max, Vec2 global_min) {
   assert(new_particles.size() == 0);
   for (auto p : particles) {
-    Vec2 coord(p.position.x + 500, p.position.y + 500);
-    proc_idx_t place = get_pid_of_coord(coord);
+    int spacedim_x = global_max.x - global_min.x;
+    int spacedim_y = global_max.y - global_min.y;
+    int x_blocksize = (int) (spacedim_x / dim);
+    int y_blocksize = (int) (spacedim_y / dim);
+    Vec2 coord(p.position.x - global_min.x, p.position.y - global_min.y);
+    proc_idx_t place = get_pid_of_coord(coord, x_blocksize, y_blocksize);
     if (place == pid)
       new_particles.push_back(p);
   }
@@ -111,7 +115,24 @@ int main(int argc, char *argv[]) {
   int particle_list_displ[nproc];
 
   for (int i = 0; i < options.numIterations; i++) {
+    bound_t local_bounds;
+    bound_t all_bounds[nproc];
     if (i % REBUILD_GRANULARITY == 0) {
+      // cprint << "Getting bounds at iteration " << i << std::endl;
+      // cprint << "Got bounds." << std::endl;
+      local_bounds = {bmin, bmax};
+      MPI_Allgather(&local_bounds, sizeof(bound_t), MPI_BYTE, 
+        all_bounds, sizeof(bound_t), MPI_BYTE, MPI_COMM_WORLD);
+
+      Vec2 global_max = Vec2(1e30f, 1e30f);
+      Vec2 global_min = Vec2(-1e30f, -1e30f);
+      for (auto bound : all_bounds) {
+        global_min.x = fminf(global_min.x, bound.min.x);
+        global_min.y = fminf(global_min.y, bound.min.y);
+        global_max.x = fmaxf(global_max.x, bound.max.x);
+        global_max.y = fmaxf(global_max.y, bound.max.y);
+      }
+
       if (i != 0) {
         // combine new particles into particles.data() 
         // by allgathering local particle list
@@ -129,7 +150,7 @@ int main(int argc, char *argv[]) {
       
       // recompute which particles belong to this process
       local_particles.clear();
-      recompute_local_particles(particles, local_particles);
+      recompute_local_particles(particles, local_particles, global_max, global_min);
       // std::cerr << local_particles.size() << std::endl;
 
       // communicate size of each particle list
@@ -152,14 +173,16 @@ int main(int argc, char *argv[]) {
       }
 
       // compute bounds
+      bmin = Vec2(1e30f, 1e30f);
+      bmax = Vec2(-1e30f, -1e30f);
       for (auto p : local_particles) {
         update_bounds(p, bmin, bmax);
       }
     } // end periodic particle redistribution
 
     // processes communicate boundaries (allgather)
-    bound_t local_bounds = {bmin, bmax};
-    bound_t all_bounds[nproc];
+    local_bounds.min = bmin;
+    local_bounds.max = bmax;
     // cprint << "Getting bounds at iteration " << i << std::endl;
     MPI_Allgather(&local_bounds, sizeof(bound_t), MPI_BYTE, 
       all_bounds, sizeof(bound_t), MPI_BYTE, MPI_COMM_WORLD);
@@ -242,6 +265,7 @@ int main(int argc, char *argv[]) {
     // run simulation iteration
     QuadTree tree;
     QuadTree::buildQuadTree(particles, tree);
+    new_particles.clear();
     simulateStep(local_particles, new_particles, neighbors, stepParams, bmin, bmax);
     
   MPI_Barrier(MPI_COMM_WORLD);

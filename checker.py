@@ -8,7 +8,7 @@ import re
 version = sys.argv[1]
 load_balance = '-lb' if sys.argv[2] == '1' else ''
 prog = 'nbody-release-' + version
-workers = [16, 128] if version == 'v1' else [16, 121]
+workers = [16, 128] if version == 'v1' else [4]
 
 scenes = (
     ('random-50000', 50000, 500.0, 5),
