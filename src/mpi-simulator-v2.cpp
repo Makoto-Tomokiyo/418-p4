@@ -115,6 +115,15 @@ int main(int argc, char *argv[]) {
       if (i != 0) {
         // combine new particles into particles.data() 
         // by allgathering local particle list
+        MPI_Allgatherv(
+          local_particles.data(), 
+          num_local_particles * sizeof(Particle),
+          MPI_INT,
+          particles.data(),
+          particle_list_sizes,
+          particle_list_displ,
+          MPI_BYTE,
+          MPI_COMM_WORLD);
       }
       
       // recompute which particles belong to this process
