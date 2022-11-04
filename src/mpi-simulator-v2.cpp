@@ -122,7 +122,8 @@ int main(int argc, char *argv[]) {
   radius = stepParams.cullRadius;
   // Don't change the timeing for totalSimulationTime.
   MPI_Barrier(MPI_COMM_WORLD);
-std::unordered_map<int, int> ord;
+
+  std::unordered_map<int, int> ord;
   int i = 0;
   for (auto p : particles) {
     std::pair<int, int> elem (p.id, i);
@@ -140,7 +141,7 @@ std::unordered_map<int, int> ord;
 
   for (int i = 0; i < options.numIterations; i++) {
     if (i % REBUILD_GRANULARITY == 0) {
-
+      Timer rebuildTimer;
       local_bounds = {bmin, bmax};
       MPI_Allgather(&local_bounds, sizeof(bound_t), MPI_BYTE, 
         all_bounds, sizeof(bound_t), MPI_BYTE, MPI_COMM_WORLD);
@@ -177,7 +178,6 @@ std::unordered_map<int, int> ord;
       // recompute which particles belong to this process
       local_particles.clear();
       recompute_local_particles(particles, local_particles, global_max, global_min);
-      std::cerr << "size of local particles: " << local_particles.size() << std::endl;
 
       // communicate size of each particle list
       num_local_particles = local_particles.size();
@@ -205,8 +205,11 @@ std::unordered_map<int, int> ord;
       for (auto p : local_particles) {
         update_bounds(p, bmin, bmax);
       }
-    } // end periodic particle redistribution
+      double rebuildTime = rebuildTimer.elapsed();
+      std::cerr << "[" << pid << "] rebuild time " << rebuildTime << std::endl;  
 
+    } // end periodic particle redistribution
+    Timer gsrTimer;
     // processes communicate boundaries (allgather)
     local_bounds.min = bmin;
     local_bounds.max = bmax;
@@ -291,14 +294,17 @@ std::unordered_map<int, int> ord;
     for (auto p : local_particles) {
       neighbors.push_back(p);
     }
-
+    double gsrTime = gsrTimer.elapsed();
+    std::cerr << "[" << pid << "] gather/send/receive " << gsrTime << std::endl;  
+    Timer simTimer;
     // run simulation iteration
     QuadTree tree;
-    QuadTree::buildQuadTree(particles, tree); // TODO: MODIFIED
+    QuadTree::buildQuadTree(neighbors, tree); // TODO: MODIFIED
     new_particles.clear();
     simulateStep(tree, local_particles, new_particles, neighbors, stepParams, bmin, bmax);
     local_particles.swap(new_particles);
-    
+    double simTime = simTimer.elapsed();
+    std::cerr << "[" << pid << "] sim " << simTime << std::endl;  
   MPI_Barrier(MPI_COMM_WORLD);
   // cprint << "Finished iteration " << i << std::endl;
   }
