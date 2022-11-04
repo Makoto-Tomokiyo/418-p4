@@ -39,7 +39,15 @@ inline bool bounds_overlap(bound_t b1, bound_t b2) {
   float dy = fminf(abs(b2.min.y - b1.max.y), abs(b1.min.y - b2.max.y));
   if (b1.max.y >= b2.min.y && b1.min.y <= b2.max.y) dy = 0;
   float dist = (dx * dx) + (dy * dy);
+<<<<<<< HEAD
   return dist <= radius * radius;
+=======
+  // cprint << "dist: " << sqrt(dist) << std::endl;
+  // cprint << "radius: " << radius << std::endl;
+  return dist <= radius * radius;
+  // return b1.max.x >= b2.min.x && b1.min.x <= b2.max.x
+  //     && b1.max.y >= b1.min.y && b1.min.y <= b2.max.y;
+>>>>>>> 1594c926378aa491b656337541bc514796c30012
 }
 
 void simulateStep(QuadTree &tree, const std::vector<Particle> &local_particles,
@@ -175,6 +183,11 @@ int main(int argc, char *argv[]) {
       for (auto p : local_particles) {
         update_bounds(p, bmin, bmax);
       }
+<<<<<<< HEAD
+=======
+      double rebuildTime = rebuildTimer.elapsed();
+      // std::cerr << "[" << pid << "] rebuild time " << rebuildTime << std::endl;  
+>>>>>>> 1594c926378aa491b656337541bc514796c30012
 
     } // end periodic particle redistribution
     // processes communicate boundaries (allgather)
