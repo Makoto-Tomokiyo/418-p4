@@ -56,7 +56,7 @@ inline bool bounds_overlap(bound_t b1, bound_t b2) {
   float dist = (dx * dx) + (dy * dy);
   // cprint << "dist: " << sqrt(dist) << std::endl;
   // cprint << "radius: " << radius << std::endl;
-  return d <= radius;
+  return dist <= radius * radius;
   // return b1.max.x >= b2.min.x && b1.min.x <= b2.max.x
   //     && b1.max.y >= b1.min.y && b1.min.y <= b2.max.y;
 }
@@ -209,8 +209,6 @@ int main(int argc, char *argv[]) {
       for (auto p : local_particles) {
         update_bounds(p, bmin, bmax);
       }
-      // std::cerr << "[" << pid << "] x bounds: " << bmin.x << ", " << bmax.x << std::endl;  
-      // std::cerr << "[" << pid << "] y bounds: " << bmin.y << ", " << bmax.y << std::endl;  
       double rebuildTime = rebuildTimer.elapsed();
       // std::cerr << "[" << pid << "] rebuild time " << rebuildTime << std::endl;  
 
