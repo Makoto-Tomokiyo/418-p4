@@ -6,7 +6,7 @@
 #include "timing.h"
 #define DEF_TAG 0
 #define COORDINATOR 0
-#define REBUILD_GRANULARITY 8
+#define REBUILD_GRANULARITY 2
 #define cprint if (pid == COORDINATOR) std::cerr
 
 typedef int proc_idx_t;
