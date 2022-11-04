@@ -44,6 +44,10 @@ inline void update_bounds(Particle p, Vec2 &bmin, Vec2 &bmax) {
   bmax.y = fmaxf(bmax.y, p.position.y);
 }
 
+float dist(float x1, float y1, float x2, float y2) {
+  return sqrt(abs(x1-x2) + abs(y1 -y2));
+}
+
 inline bool bounds_overlap(bound_t b1, bound_t b2) {
   float dx = fminf(abs(b1.min.x - b2.max.x), abs(b2.min.x - b1.max.x));
   if (b1.max.x >= b2.min.x && b1.min.x <= b2.max.x) dx = 0;
@@ -52,7 +56,7 @@ inline bool bounds_overlap(bound_t b1, bound_t b2) {
   float dist = (dx * dx) + (dy * dy);
   // cprint << "dist: " << sqrt(dist) << std::endl;
   // cprint << "radius: " << radius << std::endl;
-  return dist <= radius * radius;
+  return d <= radius;
   // return b1.max.x >= b2.min.x && b1.min.x <= b2.max.x
   //     && b1.max.y >= b1.min.y && b1.min.y <= b2.max.y;
 }
