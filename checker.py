@@ -8,7 +8,7 @@ import re
 version = sys.argv[1]
 load_balance = '-lb' if sys.argv[2] == '1' else ''
 prog = 'nbody-release-' + version
-workers = [16, 128] if version == 'v1' else [4]
+workers = [16, 128] if version == 'v1' else [4, 4]
 
 scenes = (
     ('random-50000', 50000, 500.0, 5),
@@ -91,6 +91,7 @@ print('\n-- Score Table ---')
 print(header)
 print('-' * len(header))
 for i, (scene, perf) in enumerate(zip(scenes, perfs)):
+    print(i, scene, perf)
     scores = [compute_score(perf[j], ref)
               for j, ref in enumerate(ref_perfs[i])]
     score += sum(scores)

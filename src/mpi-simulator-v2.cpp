@@ -206,7 +206,7 @@ int main(int argc, char *argv[]) {
         update_bounds(p, bmin, bmax);
       }
       double rebuildTime = rebuildTimer.elapsed();
-      std::cerr << "[" << pid << "] rebuild time " << rebuildTime << std::endl;  
+      // std::cerr << "[" << pid << "] rebuild time " << rebuildTime << std::endl;  
 
     } // end periodic particle redistribution
     Timer gsrTimer;
@@ -295,7 +295,7 @@ int main(int argc, char *argv[]) {
       neighbors.push_back(p);
     }
     double gsrTime = gsrTimer.elapsed();
-    std::cerr << "[" << pid << "] gather/send/receive " << gsrTime << std::endl;  
+    // std::cerr << "[" << pid << "] gather/send/receive " << gsrTime << std::endl;  
     Timer simTimer;
     // run simulation iteration
     QuadTree tree;
@@ -304,9 +304,8 @@ int main(int argc, char *argv[]) {
     simulateStep(tree, local_particles, new_particles, neighbors, stepParams, bmin, bmax);
     local_particles.swap(new_particles);
     double simTime = simTimer.elapsed();
-    std::cerr << "[" << pid << "] sim " << simTime << std::endl;  
+    // std::cerr << "[" << pid << "] sim " << simTime << std::endl;  
   MPI_Barrier(MPI_COMM_WORLD);
-  // cprint << "Finished iteration " << i << std::endl;
   }
   double totalSimulationTime = totalSimulationTimer.elapsed();
 
