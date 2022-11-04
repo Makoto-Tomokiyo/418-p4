@@ -205,6 +205,8 @@ int main(int argc, char *argv[]) {
       for (auto p : local_particles) {
         update_bounds(p, bmin, bmax);
       }
+      std::cerr << "[" << pid << "] x bounds: " << bmin.x << ", " << bmax.x << std::endl;  
+      std::cerr << "[" << pid << "] y bounds: " << bmin.y << ", " << bmax.y << std::endl;  
       double rebuildTime = rebuildTimer.elapsed();
       // std::cerr << "[" << pid << "] rebuild time " << rebuildTime << std::endl;  
 
@@ -213,10 +215,8 @@ int main(int argc, char *argv[]) {
     // processes communicate boundaries (allgather)
     local_bounds.min = bmin;
     local_bounds.max = bmax;
-    // cprint << "Getting bounds at iteration " << i << std::endl;
     MPI_Allgather(&local_bounds, sizeof(bound_t), MPI_BYTE, 
       all_bounds, sizeof(bound_t), MPI_BYTE, MPI_COMM_WORLD);
-    // cprint << "Got bounds." << std::endl;
     
     // determine set of neighbors
     neighbor_procs.clear();
@@ -232,7 +232,7 @@ int main(int argc, char *argv[]) {
     MPI_Request send_reqs[num_neighbor_procs];
     for (int j = 0; j < num_neighbor_procs; j++) {
       proc_idx_t cur_neighbor = neighbor_procs[j];
-      std::cerr << "[" << pid << "] sending to " << cur_neighbor << std::endl;  
+      // std::cerr << "[" << pid << "] sending to " << cur_neighbor << std::endl;  
       MPI_Isend(
         local_particles.data(), 
         num_local_particles * sizeof(Particle), 
@@ -263,7 +263,7 @@ int main(int argc, char *argv[]) {
     int counter = 0;
     for (int j = 0; j < num_neighbor_procs; j++) {
       proc_idx_t cur_neighbor = neighbor_procs[j];
-      std::cerr << "[" << pid << "] received msg from " << cur_neighbor << std::endl;  
+      // std::cerr << "[" << pid << "] received msg from " << cur_neighbor << std::endl;  
       void *dest_buf = (void *)((char *)dest + counter);
       int recv_bytes = (particle_list_sizes[cur_neighbor]); // WARNING:
       
