@@ -44,15 +44,53 @@ inline void update_bounds(Particle p, Vec2 &bmin, Vec2 &bmax) {
   bmax.y = fmaxf(bmax.y, p.position.y);
 }
 
+float dist(float x1, float y1, float x2, float y2) {
+  return sqrt(abs(x1-x2) + abs(y1 -y2));
+}
+
 inline bool bounds_overlap(bound_t b1, bound_t b2) {
-  float dx = fminf(abs(b1.min.x - b2.max.x), abs(b2.min.x - b1.max.x));
-  if (b1.max.x >= b2.min.x && b1.min.x <= b2.max.x) dx = 0;
-  float dy = fminf(abs(b2.min.y - b1.max.y), abs(b1.min.y - b2.max.y));
-  if (b1.max.y >= b1.min.y && b1.min.y <= b2.max.y) dy = 0;
-  float dist = (dx * dx) + (dy * dy);
+  float x1 = b1.min.x;
+  float x1b = b1.max.x;
+  float y1 = b1.min.y;
+  float y1b = b1.max.y;
+
+  float x2 = b2.min.x;
+  float x2b = b2.max.x;
+  float y2 = b2.min.y;
+  float y2b = b2.max.y;
+
+  bool left = x2b < x1;
+  bool right = x1b < x2;
+  bool bottom = y2b < y1;
+  bool top = y1b < y2;
+  float d; 
+
+  if (top and left)
+    d = dist(x1, y1b, x2b, y2);
+  else if (left and bottom)
+    d = dist(x1, y1,x2b, y2b);
+  else if (bottom and right)
+    d = dist(x1b, y1, x2, y2b);
+  else if (right and top)
+    d = dist(x1b, y1b, x2, y2);
+  else if (left)
+    d = x1 - x2b;
+  else if (right)
+    d = x2 - x1b;
+  else if (bottom)
+    d = y1 - y2b;
+  else if (top)
+    d = y2 - y1b;
+  else          
+    d = 0;
+  // float dx = fminf(abs(b1.min.x - b2.max.x), abs(b2.min.x - b1.max.x));
+  // if (b1.max.x >= b2.min.x && b1.min.x <= b2.max.x) dx = 0;
+  // float dy = fminf(abs(b2.min.y - b1.max.y), abs(b1.min.y - b2.max.y));
+  // if (b1.max.y >= b1.min.y && b1.min.y <= b2.max.y) dy = 0;
+  // float dist = (dx * dx) + (dy * dy);
   // cprint << "dist: " << sqrt(dist) << std::endl;
   // cprint << "radius: " << radius << std::endl;
-  return dist <= radius * radius;
+  return d <= radius;
   // return b1.max.x >= b2.min.x && b1.min.x <= b2.max.x
   //     && b1.max.y >= b1.min.y && b1.min.y <= b2.max.y;
 }
@@ -232,7 +270,7 @@ int main(int argc, char *argv[]) {
     MPI_Request send_reqs[num_neighbor_procs];
     for (int j = 0; j < num_neighbor_procs; j++) {
       proc_idx_t cur_neighbor = neighbor_procs[j];
-      std::cerr << "[" << pid << "] sending to " << cur_neighbor << std::endl;  
+      // std::cerr << "[" << pid << "] sending to " << cur_neighbor << std::endl;  
       MPI_Isend(
         local_particles.data(), 
         num_local_particles * sizeof(Particle), 
@@ -263,7 +301,7 @@ int main(int argc, char *argv[]) {
     int counter = 0;
     for (int j = 0; j < num_neighbor_procs; j++) {
       proc_idx_t cur_neighbor = neighbor_procs[j];
-      std::cerr << "[" << pid << "] received msg from " << cur_neighbor << std::endl;  
+      // std::cerr << "[" << pid << "] received msg from " << cur_neighbor << std::endl;  
       void *dest_buf = (void *)((char *)dest + counter);
       int recv_bytes = (particle_list_sizes[cur_neighbor]); // WARNING:
       
