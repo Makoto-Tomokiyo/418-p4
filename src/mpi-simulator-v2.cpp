@@ -48,7 +48,7 @@ inline bool bounds_overlap(bound_t b1, bound_t b2) {
   float dx = fminf(abs(b1.min.x - b2.max.x), abs(b2.min.x - b1.max.x));
   if (b1.max.x >= b2.min.x && b1.min.x <= b2.max.x) dx = 0;
   float dy = fminf(abs(b2.min.y - b1.max.y), abs(b1.min.y - b2.max.y));
-  if (b1.max.y >= b1.min.y && b1.min.y <= b2.max.y) dy = 0;
+  if (b1.max.y >= b2.min.y && b1.min.y <= b2.max.y) dy = 0;
   float dist = (dx * dx) + (dy * dy);
   // cprint << "dist: " << sqrt(dist) << std::endl;
   // cprint << "radius: " << radius << std::endl;
@@ -205,8 +205,8 @@ int main(int argc, char *argv[]) {
       for (auto p : local_particles) {
         update_bounds(p, bmin, bmax);
       }
-      std::cerr << "[" << pid << "] x bounds: " << bmin.x << ", " << bmax.x << std::endl;  
-      std::cerr << "[" << pid << "] y bounds: " << bmin.y << ", " << bmax.y << std::endl;  
+      // std::cerr << "[" << pid << "] x bounds: " << bmin.x << ", " << bmax.x << std::endl;  
+      // std::cerr << "[" << pid << "] y bounds: " << bmin.y << ", " << bmax.y << std::endl;  
       double rebuildTime = rebuildTimer.elapsed();
       // std::cerr << "[" << pid << "] rebuild time " << rebuildTime << std::endl;  
 
