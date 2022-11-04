@@ -49,45 +49,11 @@ float dist(float x1, float y1, float x2, float y2) {
 }
 
 inline bool bounds_overlap(bound_t b1, bound_t b2) {
-  float x1 = b1.min.x;
-  float x1b = b1.max.x;
-  float y1 = b1.min.y;
-  float y1b = b1.max.y;
-
-  float x2 = b2.min.x;
-  float x2b = b2.max.x;
-  float y2 = b2.min.y;
-  float y2b = b2.max.y;
-
-  bool left = x2b < x1;
-  bool right = x1b < x2;
-  bool bottom = y2b < y1;
-  bool top = y1b < y2;
-  float d; 
-
-  if (top and left)
-    d = dist(x1, y1b, x2b, y2);
-  else if (left and bottom)
-    d = dist(x1, y1,x2b, y2b);
-  else if (bottom and right)
-    d = dist(x1b, y1, x2, y2b);
-  else if (right and top)
-    d = dist(x1b, y1b, x2, y2);
-  else if (left)
-    d = x1 - x2b;
-  else if (right)
-    d = x2 - x1b;
-  else if (bottom)
-    d = y1 - y2b;
-  else if (top)
-    d = y2 - y1b;
-  else          
-    d = 0;
-  // float dx = fminf(abs(b1.min.x - b2.max.x), abs(b2.min.x - b1.max.x));
-  // if (b1.max.x >= b2.min.x && b1.min.x <= b2.max.x) dx = 0;
-  // float dy = fminf(abs(b2.min.y - b1.max.y), abs(b1.min.y - b2.max.y));
-  // if (b1.max.y >= b1.min.y && b1.min.y <= b2.max.y) dy = 0;
-  // float dist = (dx * dx) + (dy * dy);
+  float dx = fminf(abs(b1.min.x - b2.max.x), abs(b2.min.x - b1.max.x));
+  if (b1.max.x >= b2.min.x && b1.min.x <= b2.max.x) dx = 0;
+  float dy = fminf(abs(b2.min.y - b1.max.y), abs(b1.min.y - b2.max.y));
+  if (b1.max.y >= b2.min.y && b1.min.y <= b2.max.y) dy = 0;
+  float dist = (dx * dx) + (dy * dy);
   // cprint << "dist: " << sqrt(dist) << std::endl;
   // cprint << "radius: " << radius << std::endl;
   return d <= radius;
@@ -243,8 +209,8 @@ int main(int argc, char *argv[]) {
       for (auto p : local_particles) {
         update_bounds(p, bmin, bmax);
       }
-      std::cerr << "[" << pid << "] x bounds: " << bmin.x << ", " << bmax.x << std::endl;  
-      std::cerr << "[" << pid << "] y bounds: " << bmin.y << ", " << bmax.y << std::endl;  
+      // std::cerr << "[" << pid << "] x bounds: " << bmin.x << ", " << bmax.x << std::endl;  
+      // std::cerr << "[" << pid << "] y bounds: " << bmin.y << ", " << bmax.y << std::endl;  
       double rebuildTime = rebuildTimer.elapsed();
       // std::cerr << "[" << pid << "] rebuild time " << rebuildTime << std::endl;  
 
