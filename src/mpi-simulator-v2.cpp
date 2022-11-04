@@ -230,9 +230,9 @@ int main(int argc, char *argv[]) {
     int num_neighbor_procs = neighbor_procs.size();
     // std::cerr << "num neighbors for proc " << pid << ": " << num_neighbor_procs << std::endl;
     MPI_Request send_reqs[num_neighbor_procs];
-    std::cerr << "[" << pid << "] sending " << num_neighbor_procs << std::endl;  
     for (int j = 0; j < num_neighbor_procs; j++) {
       proc_idx_t cur_neighbor = neighbor_procs[j];
+      std::cerr << "[" << pid << "] sending to " << cur_neighbor << std::endl;  
       MPI_Isend(
         local_particles.data(), 
         num_local_particles * sizeof(Particle), 
