@@ -6,22 +6,26 @@
 #include "timing.h"
 #define DEF_TAG 0
 #define COORDINATOR 0
-#define REBUILD_GRANULARITY 8
+#define REBUILD_GRANULARITY 4
 #define cprint if (pid == COORDINATOR) std::cerr
 
 typedef int proc_idx_t;
 
 typedef struct {Vec2 min; Vec2 max;} bound_t;
 
+// TODO: use mpi_reduce to get global min and max
+// use large heap buffers instead of resizing vectors
+// use mpi_status and mpi_get_count to determine number of 
+// particles rather than communicating
+
 float radius;
 int dim;
 int nproc;
-int blocksize;
 proc_idx_t pid;
-const int spacedim = 1000;
+float spacedim_x, spacedim_y;
 
 inline proc_idx_t get_pid_of_coord(Vec2 coords, float x_blocksize, float y_blocksize) {
-  assert(coords.x < 1000 && coords.y < 1000);
+  assert(coords.x <= spacedim_x && coords.y <= spacedim_y);
   int x = (int) coords.x / ceil(x_blocksize);
   int y = (int) coords.y / ceil(y_blocksize);
   int retval = y * dim + x;
@@ -53,18 +57,19 @@ inline bool bounds_overlap(bound_t b1, bound_t b2) {
   //     && b1.max.y >= b1.min.y && b1.min.y <= b2.max.y;
 }
 
-void simulateStep(const std::vector<Particle> &local_particles,
+void simulateStep(QuadTree &tree, const std::vector<Particle> &local_particles,
                   std::vector<Particle> &newParticles, 
                   std::vector<Particle> &neighbors, 
                   StepParameters params, Vec2 &bmin, Vec2 &bmax) {
   assert(newParticles.size() == 0);
+  newParticles.resize(local_particles.size());
   /* update each local particle */
   // std::cerr << "tree size:" << neighbors.size() << " local size:" << local_particles.size() << std::endl;
 
   for (size_t j = 0; j < local_particles.size(); j++) {
       auto p = local_particles[j];
       Vec2 force = Vec2(0.0f, 0.0f);
-      // quadTree.getParticles(neighbors, p.position, params.cullRadius);
+      tree.getParticles(neighbors, p.position, params.cullRadius);
       /* Iterate through nearby particles and accumulate new force */
       for (size_t i = 0; i < neighbors.size(); i++) {
         Particle p1 = neighbors[i];
@@ -72,7 +77,7 @@ void simulateStep(const std::vector<Particle> &local_particles,
       }
       /* Update force */
       Particle new_p = updateParticle(p, force, params.deltaTime);
-      newParticles.push_back(new_p);
+      newParticles[j] = new_p;
       update_bounds(new_p, bmin, bmax);
     }
   assert(newParticles.size() == local_particles.size());
@@ -82,12 +87,12 @@ void recompute_local_particles(const std::vector<Particle> &particles,
                                std::vector<Particle> &new_particles, 
                                Vec2 global_max, Vec2 global_min) {
   assert(new_particles.size() == 0);
-  float spacedim_x = global_max.x - global_min.x;
-  float spacedim_y = global_max.y - global_min.y;
+  spacedim_x = global_max.x - global_min.x;
+  spacedim_y = global_max.y - global_min.y;
   // cprint << "[x, y] dims: " << spacedim_x << ", " << spacedim_y << std::endl;
+  float x_blocksize = (spacedim_x / dim);
+  float y_blocksize = (spacedim_y / dim);
   for (auto p : particles) {
-    float x_blocksize = (spacedim_x / dim);
-    float y_blocksize = (spacedim_y / dim);
     Vec2 coord(p.position.x - global_min.x, p.position.y - global_min.y);
     proc_idx_t place = get_pid_of_coord(coord, x_blocksize, y_blocksize);
     if (place == pid)
@@ -112,7 +117,6 @@ int main(int argc, char *argv[]) {
   Vec2 bmin(1e30f, 1e30f);
   Vec2 bmax(-1e30f, -1e30f);
   dim = sqrt(nproc);
-  blocksize = spacedim / dim;
 
   StepParameters stepParams = getBenchmarkStepParams(options.spaceSize);
   radius = stepParams.cullRadius;
@@ -126,13 +130,13 @@ std::unordered_map<int, int> ord;
     i += 1;
   }
 
-  Timer totalSimulationTimer;
   
   int num_local_particles;
   int particle_list_sizes[nproc];
   int particle_list_displ[nproc];
   bound_t local_bounds;
   bound_t all_bounds[nproc];
+  Timer totalSimulationTimer;
 
   for (int i = 0; i < options.numIterations; i++) {
     if (i % REBUILD_GRANULARITY == 0) {
@@ -141,8 +145,8 @@ std::unordered_map<int, int> ord;
       MPI_Allgather(&local_bounds, sizeof(bound_t), MPI_BYTE, 
         all_bounds, sizeof(bound_t), MPI_BYTE, MPI_COMM_WORLD);
 
-      Vec2 global_min = Vec2(1e30f, 1e30f);
-      Vec2 global_max = Vec2(-1e30f, -1e30f);
+      Vec2 global_min(1e30f, 1e30f);
+      Vec2 global_max(-1e30f, -1e30f);
 
       if (i != 0) {
         // combine new particles into particles.data() 
@@ -150,7 +154,7 @@ std::unordered_map<int, int> ord;
         MPI_Allgatherv(
           local_particles.data(), 
           num_local_particles * sizeof(Particle),
-          MPI_INT,
+          MPI_BYTE,
           particles.data(),
           particle_list_sizes,
           particle_list_displ,
@@ -185,12 +189,13 @@ std::unordered_map<int, int> ord;
       // Calculate displacements
       unsigned int acc = 0;
       for (int j = 0; j < nproc; j++) {
+        particle_list_sizes[j] *= sizeof(Particle);
         particle_list_displ[j] = acc;
         acc += particle_list_sizes[j];
         // cprint << "acc: " << acc << std::endl;
       }
-      if (acc != particles.size()) {
-        // cprint << "acc: " << acc << "; size: " << particles.size() << std::endl;
+      if (acc != particles.size() * sizeof(Particle)) {
+        cprint << "acc: " << acc << "; size: " << particles.size() << std::endl;
         assert(false);
       }
 
@@ -242,6 +247,7 @@ std::unordered_map<int, int> ord;
       neighbors_displ[j] = num_neighbor_particles;
       num_neighbor_particles += particle_list_sizes[neighbor_procs[j]];
     }
+    num_neighbor_particles /= sizeof(Particle);
 
     // receive neighbors' particles (async)
     // WARNING: neighbors excludes locals here
@@ -253,8 +259,8 @@ std::unordered_map<int, int> ord;
     int counter = 0;
     for (int j = 0; j < num_neighbor_procs; j++) {
       proc_idx_t cur_neighbor = neighbor_procs[j];
-      void *dest_buf = (void *)((char *)dest + counter * sizeof(Particle));
-      int recv_bytes = (particle_list_sizes[cur_neighbor]) * sizeof(Particle);
+      void *dest_buf = (void *)((char *)dest + counter);
+      int recv_bytes = (particle_list_sizes[cur_neighbor]); // WARNING:
       
       MPI_Irecv(
         dest_buf, 
@@ -267,8 +273,15 @@ std::unordered_map<int, int> ord;
       counter += particle_list_sizes[cur_neighbor];
     }
     for (int j = 0; j < num_neighbor_procs; j++) {
-      MPI_Wait(&send_reqs[j], MPI_STATUS_IGNORE);
-      MPI_Wait(&recv_reqs[j], MPI_STATUS_IGNORE);
+      // MPI_Wait(&send_reqs[j], MPI_STATUS_IGNORE);
+      MPI_Status status;
+      int count;
+      int recv_bytes = (particle_list_sizes[neighbor_procs[j]]);
+      MPI_Wait(&recv_reqs[j], &status);
+      MPI_Get_count(&status, MPI_BYTE, &count);
+      if (count != recv_bytes) {
+        std::cerr << "bad count received: " << count << " vs " << recv_bytes << std::endl;
+      }
       // fprintf(stderr, "[Process %d] The MPI_Irecv completed, therefore so does the underlying MPI_Recv.\n", pid);
       // fflush(stderr);
     }
@@ -281,9 +294,9 @@ std::unordered_map<int, int> ord;
 
     // run simulation iteration
     QuadTree tree;
-    QuadTree::buildQuadTree(particles, tree);
+    QuadTree::buildQuadTree(particles, tree); // TODO: MODIFIED
     new_particles.clear();
-    simulateStep(local_particles, new_particles, neighbors, stepParams, bmin, bmax);
+    simulateStep(tree, local_particles, new_particles, neighbors, stepParams, bmin, bmax);
     local_particles.swap(new_particles);
     
   MPI_Barrier(MPI_COMM_WORLD);
@@ -291,10 +304,6 @@ std::unordered_map<int, int> ord;
   }
   double totalSimulationTime = totalSimulationTimer.elapsed();
 
-  for (int i = 0; i < nproc; i++) {
-    particle_list_sizes[i] *= sizeof(Particle);
-    particle_list_displ[i] *= sizeof(Particle);
-  }
   MPI_Allgatherv(
     local_particles.data(), 
     num_local_particles * sizeof(Particle),
